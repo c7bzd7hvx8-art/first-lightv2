@@ -4,6 +4,82 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — Modularisation Phase 1 begun — Commit A: diary.js → ES module
+
+Working on branch `feat/modularise-phase-1` (main stays pristine). Backup = origin/main on GitHub.
+
+**§9 open-question answers (locked in before first extraction):**
+
+- **Tests** — flat `tests/*.test.mjs` (keep current pattern; no `tests/modules/` sub-tree).
+- **Extension** — `.mjs` throughout `modules/` to match `lib/fl-pure.mjs` and stay visually distinct from classic scripts.
+- **Dev server** — `npx serve` (Node already installed; Python stub on this machine launches the Microsoft Store).
+- **Release cadence** — after every module if smoke-test green.
+- **Browser target** — ES2020+ (Chrome 89+, Safari 15+, Firefox 89+). **No top-level await** — it pushes the target to Safari 15+ / Chrome 89+ and isn't needed for anything we're doing.
+
+**Commit A — pure cutover, no extraction:**
+
+- **`diary.html`** — `<script src="diary.js">` → `<script type="module" src="diary.js">`. Comment above explains what changes semantically (deferred execution, no `window.` attachment of `var`s). Vendor libs (Leaflet / MarkerCluster / Supabase / jsPDF) stay as classic scripts in `<head>` — they run first and attach `window.L`, `window.supabase`, `window.jspdf` before the module executes.
+- **`diary.js`** — added `flOnReady(fn)` helper. Under `type="module"` the file is deferred, so DOMContentLoaded has already fired by the time we register listeners; `flOnReady` runs `fn` immediately if `document.readyState !== 'loading'`, otherwise falls back to the listener. Both `document.addEventListener('DOMContentLoaded', ...)` sites (form-dirty tracker at L1443 and the main init IIFE at L2005) now call `flOnReady(...)`.
+- **`sw.js`** — cache bump to `v7.37` so the script-tag change propagates on next visit.
+
+**Pre-flight checks (all green):**
+
+- No module-level `this.` references (would change from `window` to `undefined` under modules).
+- No external code reads `window.currentUser` / `window.allEntries` / `window.sb` etc. (`var`s losing `window` attachment is invisible).
+- The only intentional `window.*` bridges (`_summarySeasonLabel`, `_summaryGroundOverride`, `FL_DEBUG`, `__flGlobalErrorInstalled`) use explicit assignment — unaffected by the scope change.
+- `app.js` doesn't reach into `diary.js` globals.
+- CSP `script-src 'self' …` already covers same-origin modules.
+
+Tests: 31/31 green. No linter errors. Awaiting browser smoke-test before Commit B (first real extraction: `modules/clock.mjs`).
+
+**Smoke-test result:** green. No red errors in DevTools; sign-in screen renders; form opens; abnormality chips render (the `renderAbnormalityGrid` → `ABNORMALITY_OPTIONS` path that crashed before). One fixup committed between A and B:
+
+- **Commit A-fix** `fix(diary): defer flOnReady callback to microtask` — changed `flOnReady` from `fn()` (synchronous) to `queueMicrotask(fn)` because under `type="module"` the script runs mid-module before later `var`s are initialised; a synchronous callback at L1453 called `renderAbnormalityGrid()` which read `ABNORMALITY_OPTIONS` that didn't exist yet. `queueMicrotask` runs after the module's top-level completes. SW bumped to 7.38.
+
+**Commit B — first real extraction: `modules/clock.mjs`.**
+
+- **`modules/clock.mjs`** (NEW) — trusted UK clock extracted verbatim from diary.js L134-215. Exports `diaryNow()`, `syncDiaryTrustedUkClock({ supabaseUrl, supabaseKey })`, `isDiaryUkClockReady()`. The Supabase `Date` header fallback (third-tier after timeapi.io + worldtimeapi.org) now receives its URL / anon key as an explicit argument instead of reading globals — the module is portable. localStorage hydration runs at module init exactly as before, using the same `fl_uk_clock_*` keys so existing users' cached offsets survive.
+- **`diary.js`** — added Tier-0/1 import block at the top: `import { diaryNow, isDiaryUkClockReady, syncDiaryTrustedUkClock as flClockSync } from './modules/clock.mjs';`. Deleted the 82-line inline clock block. Kept a 7-line `syncDiaryTrustedUkClock()` shim that forwards `{ supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_KEY }` so the 5 call sites (`openNewEntry`, `openQuickEntry`, `saveQuickEntry`, init IIFE, online-sync listener) didn't need editing. Updated the 3 sites that read the old `diaryUkClockReady` flag to `isDiaryUkClockReady()`.
+- **`sw.js`** — `./modules/clock.mjs` added to `PRECACHE_URLS`. `isStaticAsset()` already catches ES modules via `request.destination === 'script'`, so no other SW logic changes. Bumped to `v7.39`.
+
+Tests: 31/31 green. No linter errors.
+
+**Commit C — `modules/sw-bridge.mjs`.**
+
+- **`modules/sw-bridge.mjs`** (NEW) — SW registration + update-banner wiring extracted verbatim from diary.js L2034-2113 (80 lines). Single exported `initSwBridge()` entry point; module-internal helpers (`showSwUpdateBar`, `swUpdateBarShown` flag) are no longer visible to diary.js. Idempotent — a second `initSwBridge()` call is a no-op, so hot reloads or accidental double-init don't attach duplicate listeners.
+- **`diary.js`** — added `import { initSwBridge } from './modules/sw-bridge.mjs';`, deleted the 80-line SW block, replaced with a single `initSwBridge();` call. The block was entirely self-contained so no other call sites needed updating. Net -75 lines.
+- **`sw.js`** — `./modules/sw-bridge.mjs` added to `PRECACHE_URLS`. Bumped to `v7.40`.
+
+Tests: 31/31 green. No linter errors.
+
+**Commit D — `modules/svg-icons.mjs`.**
+
+- **`modules/svg-icons.mjs`** (NEW) — 32 inline-SVG icon blobs (target reticle, cloud / clipboard / camera / image / pin / GPS / pencil / PDF / trash / book / zap / signal / 3 toast tones, 3 weather metric icons, 10 sky-condition icons) extracted verbatim from diary.js L212-330. All exported `const`s; pure data, zero logic. Callers reference the same `SVG_*` names via a single named import.
+- **`diary.js`** — one extended import block at the top brings the whole set into scope. Deleted ~120 lines of string-literal definitions (the biggest single block of pure data in the file). Callers at ~40 consumption sites (toast renderers, plan/target cards, form buttons, list cards, weather card, detail view) are unchanged — the imported names shadow the deleted `var`s with identical values.
+- **`sw.js`** — `./modules/svg-icons.mjs` added to `PRECACHE_URLS`. Bumped to `v7.41`.
+
+diary.js is now **9,707 lines** (was ~9,845 at the start of Phase 1). Total reduction to date: ~140 lines. Tests: 31/31 green.
+
+**Commit E — `modules/supabase.mjs`.**
+
+- **`modules/supabase.mjs`** (NEW) — thin wrapper over the `@supabase/supabase-js` UMD global. Exports the project URL / anon key as module constants, a `SUPABASE_CONFIGURED` boolean, the `sb` client as a **live binding** (`export let sb = null`), and an `initSupabase()` that returns a structured result (`{ ok: true } | { ok: false, reason: 'not-configured' | 'error' }`). DOM side-effects removed from the module — the caller (diary.js) now owns the two app-specific failure UIs (auth-card setup notice, error toast).
+- **`diary.js`** — imports `SUPABASE_URL`, `SUPABASE_KEY`, `sb`, and the raw init function. The `initSupabase()` call site (`if (!initSupabase()) return;`) is unchanged — a thin shim maps the module's result object to the old boolean contract and to the DOM / toast UI. All 88 `sb.xxx` call sites unchanged — they now read the module's live binding. Dropped the defensive `typeof SUPABASE_URL === 'string'` guards in the clock shim (imports are typed and always in scope).
+- **`sw.js`** — `./modules/supabase.mjs` added to `PRECACHE_URLS`. Bumped to `v7.42`.
+
+The headline win here isn't lines (diary.js is 9,702 now, ~5 fewer than D) — it's **dependency direction**: future modules (`auth.mjs`, `data.mjs`) will import the Supabase client directly from one canonical place instead of reaching into `window.sb` via a shim. Tests: 31/31 green.
+
+**Bugfix caught during Commit E smoke-test:** `SVG_WX_SKY_OVC` (overcast cloud weather icon) had a stray extra `0` in its `d` path — the arc command `a4 4 0 0 0 0-8 0h-.5` has 8 numeric params instead of the required 7, making Chromium reject the attribute with `<path> attribute d: Expected number`. The glyph just didn't render on any entry with overcast weather and the console logged one error per render. Pre-existing bug copied verbatim into `svg-icons.mjs` at Commit D; noticed when the user opened a detail view. Fixed by removing the stray `0 ` so the path matches the identical (working) cloud shape in `SVG_FL_CLOUD`. Comment added pointing at the fix so the pattern isn't re-introduced. SW bumped to `v7.43`.
+
+**Commit H — `modules/stats.mjs` (partial — constants + 3 simplest aggregators).** Unlike weather/photos, the stats surface mixes aggregation, HTML building, and DOM writes in each `buildXStats` function, so a wholesale extraction would have been ~800+ lines of risky plumbing. Took a conservative slice instead: moved the 5 shared **data tables** (`CAL_COLORS`, `SP_COLORS_D`, `AGE_CLASSES`, `AGE_COLORS`, `AGE_GROUPS`) plus a new `TIME_OF_DAY_BUCKETS` table, and extracted **3 pure aggregators** (`aggregateShooterStats`, `aggregateDestinationStats`, `aggregateTimeOfDayStats`) + a `categorizeHourToBucket(hour)` helper into `modules/stats.mjs`. The three corresponding `buildXStats` functions in `diary.js` became thin DOM wrappers that call the aggregator then render HTML — turning ~48 lines of shooter logic into 22, ~48 destination → 28, ~43 time-of-day → 17. The render flags (`isAllSelf`, `total===0`) moved onto the aggregator return shape so the render callers stay declarative. Left `buildCalibreDistanceStats`, `buildAgeStats`, `buildTrendsChart`, and `buildGroundStats` in place — their pure halves are worth extracting but each has more cross-references (`normalizeAgeClassLabel`, `buildSeasonFromEntry`, `currentSeason`, Chart.js), so they belong in a follow-up commit. Added `tests/stats.test.mjs` with **24 new assertions** covering: every AGE_GROUP label matches an AGE_CLASSES label (caught duplicates / typos), TIME_OF_DAY_BUCKETS Night-last invariant, whitespace trim in shooter names, "Self" pinning first regardless of count, the 21→04 night wraparound for all 8 hours, and the NaN / junk-hour → Night fallback. `diary.js` -94/+37 net −57 lines; `sw.js` → `v7.46` with `./modules/stats.mjs` in `PRECACHE_URLS`. Test count 65 → 89, all green.
+
+**Commit G — `modules/photos.mjs` extracted.** Pulled the 4 pure photo helpers and the canvas compression pipeline out of `diary.js` into a new module. Exports: `CULL_PHOTO_SIGN_EXPIRES` (the 24-hour signed-URL TTL constant, used at 3 call sites), `newCullPhotoPath(userId)` (collision-free storage path builder), `cullPhotoStoragePath(url)` (legacy URL / bucket-path normaliser used at 7 call sites — this one is the most-used photo helper in the codebase), `dataUrlToBlob(dataUrl)` (offline-queue drain helper), and a new `compressPhotoFile(file, opts)` that wraps the FileReader → Image → Canvas → Blob pipeline in a Promise with configurable max-dim and JPEG quality. `handlePhoto()` in `diary.js` is now a 15-line DOM wrapper around `compressPhotoFile()` instead of an 40-line nested-callback mess, which also means a future "HQ trophy shot" path can reuse the same pipeline at a different `maxDim`. Defaults held constant at 800px / 0.75 quality to avoid ballooning stored photo size on the free Supabase tier. Added `tests/photos.test.mjs` with **15 new assertions** covering: the TTL sanity, the path-builder shape + uniqueness-in-a-tick, all 3 URL-shape branches of `cullPhotoStoragePath` (bucket-relative, signed, public) including URL-decoding, every null/empty/garbage input path, and a JPEG-header round-trip through `dataUrlToBlob`. `compressPhotoFile` is smoke-tested only (it needs Image/Canvas/FileReader). `diary.js` -83/+33 net −50 lines; `sw.js` → `v7.45` with `./modules/photos.mjs` in `PRECACHE_URLS`. Test count 50 → 65, all green.
+
+**Commit F — `modules/weather.mjs` extracted.** The weather-at-time-of-cull feature had the right split: the WMO-code table, wind-direction bucket, hourly-index lookup, London wall-clock → UTC epoch-ms converter, and the Open-Meteo fetch are all pure or near-pure; the DB write and the HTML render both touch app state (`sb`, `currentUser`, `allEntries`, `esc`). Kept that split intact — moved the five safe functions into `modules/weather.mjs` (183 lines) and left `attachWeatherToEntry` + `renderWeatherStrip` in `diary.js`. The module re-imports `diaryNow` from `clock.mjs` and the 11 sky-icon SVG blobs from `svg-icons.mjs`, so `wxCodeLabel` returns a ready-to-inline payload with no further plumbing. Also added `tests/weather.test.mjs` (141 lines, **19 new assertions**) covering every WMO bucket boundary, every 8-compass direction including the 22.5°/67.5° round-to-boundary edges, both Open-Meteo time formats the API has shipped, and the BST vs GMT offset in `diaryLondonWallMs`. Crucially one of the new tests pins the `SVG_WX_SKY_OVC` fix with an explicit `!.includes('0-8 0h-.5')` assertion so the malformed arc can never regress. `diary.js` -149/+16 lines (net −133); the weather code is also now unit-testable without a browser. `sw.js` → `v7.44` and `./modules/weather.mjs` added to `PRECACHE_URLS`. Total test count: 31 → 50, all green.
+
+
+
+---
+
 ## 2026-04-16 — Audit round-2 sweep (11 items, all closed)
 
 Sequential pass through the full re-audit backlog. Risk-ordered — safe infra first, tiny `diary.js` edits next, bigger structural work last. Tests stayed 31/31 green throughout.

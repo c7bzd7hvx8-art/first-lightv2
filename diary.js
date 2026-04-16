@@ -1,6 +1,55 @@
 /* Cull Diary — App v2.0 */
 
 // ══════════════════════════════════════════════════════════════
+// MODULE IMPORTS (modularisation Phase 1 — see MODULARISATION-PLAN.md)
+// ══════════════════════════════════════════════════════════════
+// Each import lands here as we extract. Order: Tier-0 / Tier-1 first so
+// later tiers can build on them. All modules live under ./modules/ except
+// lib/fl-pure.mjs which predates the plan.
+import {
+  diaryNow,
+  isDiaryUkClockReady,
+  syncDiaryTrustedUkClock as flClockSync
+} from './modules/clock.mjs';
+import { initSwBridge } from './modules/sw-bridge.mjs';
+import {
+  SUPABASE_URL, SUPABASE_KEY, sb,
+  initSupabase as flSupabaseInit
+} from './modules/supabase.mjs';
+import {
+  wxCodeLabel,
+  windDirLabel,
+  fetchCullWeather
+} from './modules/weather.mjs';
+// findOpenMeteoHourlyIndex and diaryLondonWallMs are not re-imported —
+// they're used only by fetchCullWeather (inside the module) and tests.
+import {
+  CULL_PHOTO_SIGN_EXPIRES,
+  newCullPhotoPath,
+  cullPhotoStoragePath,
+  dataUrlToBlob,
+  compressPhotoFile
+} from './modules/photos.mjs';
+import {
+  CAL_COLORS, SP_COLORS_D,
+  AGE_CLASSES, AGE_COLORS, AGE_GROUPS,
+  aggregateShooterStats,
+  aggregateDestinationStats,
+  aggregateTimeOfDayStats
+} from './modules/stats.mjs';
+import {
+  SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
+  SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
+  SVG_FL_IMAGE_OFF, SVG_FL_PIN, SVG_FL_GPS, SVG_FL_PENCIL,
+  SVG_FL_FILE_PDF, SVG_FL_TRASH, SVG_FL_BOOK, SVG_FL_QUICK,
+  SVG_FL_SIGNAL, SVG_FL_TOAST_WARN, SVG_FL_TOAST_OK, SVG_FL_TOAST_INFO,
+  SVG_WX_TEMP, SVG_WX_WIND, SVG_WX_PRESSURE,
+  SVG_WX_SKY_CLR, SVG_WX_SKY_PTLY, SVG_WX_SKY_OVC, SVG_WX_SKY_FOG,
+  SVG_WX_SKY_DZ, SVG_WX_SKY_RAIN, SVG_WX_SKY_SHOWERS, SVG_WX_SKY_SNOW,
+  SVG_WX_SKY_SNSH, SVG_WX_SKY_TS, SVG_WX_SKY_UNK
+} from './modules/svg-icons.mjs';
+
+// ══════════════════════════════════════════════════════════════
 // GLOBALS INDEX (partial — full migration deferred to P3 code-quality #1)
 // ══════════════════════════════════════════════════════════════
 // Migrated (use these):
@@ -95,6 +144,25 @@ function flDebugLog(level, label, details) {
   });
 })();
 
+// ── DOM-ready helper ───────────────────────────────────────────
+// Under <script type="module"> the script is deferred; by the time this file
+// runs, DOMContentLoaded has already fired and a plain
+// `document.addEventListener('DOMContentLoaded', fn)` callback would never
+// execute. This helper runs `fn` after the module's synchronous top-level
+// finishes (via queueMicrotask) — otherwise callbacks registered early in
+// the file would fire before later `var` declarations have been initialised,
+// crashing with "Cannot read properties of undefined". Safe under classic-
+// script too because the microtask queue drains after the current script.
+function flOnReady(fn) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fn);
+  } else {
+    // Defer to microtask so the callback observes the final module state
+    // (all top-level `var`s and function declarations initialised).
+    queueMicrotask(fn);
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 // CULL PLAN — targets vs actuals
 // ══════════════════════════════════════════════════════════════
@@ -112,87 +180,14 @@ var PLAN_SPECIES = [
   { name:'CWD',       color:'#00695c', key:'cwd',     mLbl:'Buck', fLbl:'Doe'  },
 ];
 
-// ── Trusted UK clock (server-synced) ──────────────────────────
-// Ordered by observed reliability. timeapi.io is tried first because worldtimeapi.org
-// has been intermittently returning ERR_CONNECTION_RESET (noisy red console errors).
-// worldtimeapi is kept as a secondary fallback, then Supabase Date header (added later).
-var DIARY_UK_CLOCK_ENDPOINTS = [
-  'https://timeapi.io/api/Time/current/zone?timeZone=Europe%2FLondon',
-  'https://worldtimeapi.org/api/timezone/Europe/London'
-];
-var DIARY_UK_CLOCK_OFFSET_KEY = 'fl_uk_clock_offset_ms';
-var DIARY_UK_CLOCK_SYNCED_AT_KEY = 'fl_uk_clock_synced_at_ms';
-var diaryUkClockOffsetMs = 0;
-var diaryUkClockReady = false;
-var diaryUkClockSyncInFlight = null;
-
-(function diaryLoadUkClockOffset() {
-  try {
-    var off = parseInt(localStorage.getItem(DIARY_UK_CLOCK_OFFSET_KEY) || '', 10);
-    var syncedAt = parseInt(localStorage.getItem(DIARY_UK_CLOCK_SYNCED_AT_KEY) || '', 10);
-    if (Number.isFinite(off) && Number.isFinite(syncedAt) && (Date.now() - syncedAt) < (24 * 60 * 60 * 1000)) {
-      diaryUkClockOffsetMs = off;
-      diaryUkClockReady = true;
-    }
-  } catch (_) {}
-})();
-
-function diaryNow() {
-  return new Date(Date.now() + diaryUkClockOffsetMs);
-}
-
+// ── Trusted UK clock ───────────────────────────────────────────
+// Implementation lives in ./modules/clock.mjs. This shim preserves the
+// zero-arg `syncDiaryTrustedUkClock()` signature used across diary.js (5
+// call sites) while passing the Supabase anon config through for the
+// third-tier fallback. SUPABASE_URL / SUPABASE_KEY are imported from
+// ./modules/supabase.mjs at the top of this file.
 async function syncDiaryTrustedUkClock() {
-  if (diaryUkClockSyncInFlight) return diaryUkClockSyncInFlight;
-  diaryUkClockSyncInFlight = (async function() {
-    try {
-      for (var i = 0; i < DIARY_UK_CLOCK_ENDPOINTS.length; i++) {
-        try {
-          var r = await fetch(DIARY_UK_CLOCK_ENDPOINTS[i], { cache: 'no-store' });
-          if (!r.ok) continue;
-          var d = await r.json();
-          var iso = d && (d.utc_datetime || d.datetime || d.dateTime);
-          var serverMs = Date.parse(String(iso || ''));
-          if (!Number.isFinite(serverMs)) continue;
-          diaryUkClockOffsetMs = serverMs - Date.now();
-          diaryUkClockReady = true;
-          try {
-            localStorage.setItem(DIARY_UK_CLOCK_OFFSET_KEY, String(diaryUkClockOffsetMs));
-            localStorage.setItem(DIARY_UK_CLOCK_SYNCED_AT_KEY, String(Date.now()));
-          } catch (_) {}
-          return true;
-        } catch (_) {}
-      }
-      // Third fallback: Supabase edge Date header (UTC). Convert via Date.parse().
-      // SUPABASE_URL / SUPABASE_KEY are var-hoisted from the config block
-      // below (see SUPABASE CONFIG) so referencing them here is safe; we
-      // deliberately do NOT re-declare the URL here — one source of truth.
-      try {
-        if (!SUPABASE_URL || !SUPABASE_KEY) return !!diaryUkClockReady;
-        var sr = await fetch(SUPABASE_URL.replace(/\/+$/,'') + '/rest/v1/', {
-          cache: 'no-store',
-          headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: 'Bearer ' + SUPABASE_KEY
-          }
-        });
-        var hDate = sr && sr.headers && sr.headers.get ? sr.headers.get('date') : '';
-        var supaMs = Date.parse(String(hDate || ''));
-        if (Number.isFinite(supaMs)) {
-          diaryUkClockOffsetMs = supaMs - Date.now();
-          diaryUkClockReady = true;
-          try {
-            localStorage.setItem(DIARY_UK_CLOCK_OFFSET_KEY, String(diaryUkClockOffsetMs));
-            localStorage.setItem(DIARY_UK_CLOCK_SYNCED_AT_KEY, String(Date.now()));
-          } catch (_) {}
-          return true;
-        }
-      } catch (_) {}
-      return !!diaryUkClockReady;
-    } finally {
-      diaryUkClockSyncInFlight = null;
-    }
-  })();
-  return diaryUkClockSyncInFlight;
+  return flClockSync({ supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_KEY });
 }
 
 /** Match PLAN_SPECIES row for syndicate / plan UIs; unknown names get a neutral dot. */
@@ -246,126 +241,9 @@ async function loadPrevTargets(season) {
   } catch(e) { console.warn('loadPrevTargets error:', e); }
 }
 
-/** Plan / stats — target reticle (matches diary.html `.plan-empty-icon` SVG). */
-var SVG_PLAN_TARGET_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<circle cx="12" cy="12" r="8" stroke="#5a7a30" stroke-width="1.5" opacity="0.55"/>' +
-  '<circle cx="12" cy="12" r="3" stroke="#c8a84b" stroke-width="1.3"/>' +
-  '<circle cx="12" cy="12" r="1" fill="#c8a84b"/>' +
-  '<line x1="12" y1="2" x2="12" y2="5" stroke="#5a7a30" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>' +
-  '<line x1="12" y1="19" x2="12" y2="22" stroke="#5a7a30" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>' +
-  '<line x1="2" y1="12" x2="5" y2="12" stroke="#5a7a30" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>' +
-  '<line x1="19" y1="12" x2="22" y2="12" stroke="#5a7a30" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>' +
-  '</svg>';
-
-var SVG_CULL_MAP_EMPTY_PIN =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#5a7a30" fill-opacity="0.2" stroke="#5a7a30" stroke-width="1.2"/>' +
-  '<circle cx="12" cy="9" r="2.2" fill="#c8a84b"/>' +
-  '</svg>';
-
-/** Stroke / fill icons — replaces emoji in diary UI (trusted markup only). */
-var SVG_FL_CLOUD =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M7 18h11a4 4 0 0 0 0-8h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg>';
-var SVG_FL_CLIPBOARD =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-  '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M6 4h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>' +
-  '<path d="M9 12h6M9 16h4"/></svg>';
-var SVG_FL_CAMERA =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-  '<rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3"/><path d="M8 6h2l1-2h4l1 2h2"/></svg>';
-var SVG_FL_IMAGE_GALLERY =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-  '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
-var SVG_FL_IMAGE_OFF =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">' +
-  '<rect x="3" y="5" width="18" height="14" rx="2"/><line x1="5" y1="19" x2="19" y2="7"/></svg>';
-var SVG_FL_PIN =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11z"/><circle cx="12" cy="10" r="2.2" fill="currentColor" stroke="none"/></svg>';
-var SVG_FL_GPS =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">' +
-  '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>' +
-  '<line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>';
-var SVG_FL_PENCIL =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-var SVG_FL_FILE_PDF =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>' +
-  '<line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
-var SVG_FL_TRASH =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>' +
-  '<line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-var SVG_FL_BOOK =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>' +
-  '<path d="M8 7h8M8 11h6"/></svg>';
-var SVG_FL_QUICK =
-  '<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13 1L3 15h7l-1.5 10L21 9h-8l1-8z"/></svg>';
-var SVG_FL_SIGNAL =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">' +
-  '<path d="M2 20h20"/><path d="M6 16v-6M10 16V8M14 16v-9M18 16V5"/></svg>';
-var SVG_FL_TOAST_WARN =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
-  '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
-  '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
-var SVG_FL_TOAST_OK =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
-var SVG_FL_TOAST_INFO =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">' +
-  '<circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>';
-var SVG_WX_TEMP =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5">' +
-  '<path d="M14 4v10.5a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"/><circle cx="12" cy="17" r="3" fill="currentColor" fill-opacity="0.25" stroke="none"/></svg>';
-var SVG_WX_WIND =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">' +
-  '<path d="M4 10h10a2 2 0 1 0 0-4"/><path d="M4 14h14a3 3 0 1 1 0 6"/><path d="M6 18h9a2 2 0 1 0 0-4"/></svg>';
-var SVG_WX_PRESSURE =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5">' +
-  '<rect x="4" y="14" width="3" height="6" rx="0.5"/><rect x="10.5" y="10" width="3" height="10" rx="0.5"/><rect x="17" y="6" width="3" height="14" rx="0.5"/></svg>';
-var SVG_WX_SKY_CLR =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">' +
-  '<circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
-var SVG_WX_SKY_PTLY =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5">' +
-  '<circle cx="17.5" cy="7" r="2.5"/><path d="M4 18h12a3 3 0 0 0 0-6h-.5A4.5 4.5 0 0 0 4 11a3 3 0 0 0 0 7z"/></svg>';
-var SVG_WX_SKY_OVC =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M7 18h11a4 4 0 0 0 0-8 0h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg>';
-var SVG_WX_SKY_FOG =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
-  '<path d="M4 9h16M3 12h18M5 15h14"/></svg>';
-var SVG_WX_SKY_DZ =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.4">' +
-  '<path d="M4 14h14a3 3 0 0 0 0-6h-.5A4.5 4.5 0 0 0 4 10a3 3 0 0 0 0 4z"/>' +
-  '<circle cx="8" cy="19" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/><circle cx="16" cy="19" r="1" fill="currentColor"/></svg>';
-var SVG_WX_SKY_RAIN =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.4">' +
-  '<path d="M4 13h14a3 3 0 0 0 0-6h-.5A4.5 4.5 0 0 0 4 9a3 3 0 0 0 0 4z"/>' +
-  '<line x1="8" y1="17" x2="7" y2="21"/><line x1="12" y1="17" x2="11" y2="21"/><line x1="16" y1="17" x2="15" y2="21"/></svg>';
-var SVG_WX_SKY_SHOWERS =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.4">' +
-  '<path d="M4 13h14a3 3 0 0 0 0-6h-.5A4.5 4.5 0 0 0 4 9a3 3 0 0 0 0 4z"/>' +
-  '<line x1="9" y1="16" x2="7" y2="20" stroke-width="2"/><line x1="15" y1="16" x2="13" y2="20" stroke-width="2"/></svg>';
-var SVG_WX_SKY_SNOW =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
-  '<path d="M4 13h14a3 3 0 0 0 0-6h-.5A4.5 4.5 0 0 0 4 9a3 3 0 0 0 0 4z"/>' +
-  '<path d="M12 17v4M9.5 18.5l5 2.5M14.5 18.5l-5 2.5M10 19h4"/></svg>';
-var SVG_WX_SKY_SNSH =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
-  '<path d="M4 13h14a3 3 0 0 0 0-6h-.5A4.5 4.5 0 0 0 4 9a3 3 0 0 0 0 4z"/>' +
-  '<path d="M9 20l1-2M12 21l1-2M15 20l1-2M9 18l1 1M12 17l1 1M15 18l1 1"/></svg>';
-var SVG_WX_SKY_TS =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5">' +
-  '<path d="M4 14h16a3 3 0 0 0 0-6h-1a5 5 0 0 0-9.9-1A4 4 0 0 0 4 10"/>' +
-  '<path d="M13 17l-2 4M10 17l-2 4M16 17l-2 4" stroke-linecap="round"/></svg>';
-var SVG_WX_SKY_UNK =
-  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5">' +
-  '<circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.82 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+// SVG icon blobs live in ./modules/svg-icons.mjs (imported at the top of
+// this file). Extracting them removes ~120 lines of string literals from
+// here; callers reference the same `SVG_*` names via the import.
 
 function diaryCloudSaveInner(label) {
   return '<span class="di-btn-ic" aria-hidden="true">' + SVG_FL_CLOUD + '</span>' + label;
@@ -797,32 +675,26 @@ async function saveTargets() {
 }
 
 // ════════════════════════════════════
-// SUPABASE CONFIG — replace with your project URL and anon key
-// Get these from: supabase.com → your project → Settings → API
+// SUPABASE CONFIG
+// Implementation and credentials live in ./modules/supabase.mjs. This shim
+// keeps the old boolean-returning `initSupabase()` API used by the init
+// IIFE, and translates the module's richer result object into the existing
+// two app-specific UI paths (setup-notice DOM rewrite vs transient toast).
 // ════════════════════════════════════
-var SUPABASE_URL  = 'https://sjaasuqeknvvmdpydfsz.supabase.co';
-var SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqYWFzdXFla252dm1kcHlkZnN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NjMzMzIsImV4cCI6MjA5MDIzOTMzMn0.aiJaKoLCI3jUkOgifqMLuhp8NnAFK0T24Va6r2CLzgw';
-
-var sb = null;
-var SUPABASE_CONFIGURED = (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_KEY !== 'YOUR_SUPABASE_ANON_KEY');
-
 function initSupabase() {
-  if (!SUPABASE_CONFIGURED) {
-    // Show setup notice on auth card instead of crashing
+  var result = flSupabaseInit();
+  if (result.ok) return true;
+  if (result.reason === 'not-configured') {
+    // Show setup notice on auth card instead of crashing.
     var note = document.querySelector('.auth-note');
     if (note) {
-      note.innerHTML = '<span style="color:#c62828;font-weight:700;">Supabase not configured.</span><br>Open <strong>diary.js</strong> and set<br><code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code><br>(replace the <code>YOUR_SUPABASE_*</code> placeholders).';
+      note.innerHTML = '<span style="color:#c62828;font-weight:700;">Supabase not configured.</span><br>Open <strong>modules/supabase.mjs</strong> and set<br><code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code><br>(replace the <code>YOUR_SUPABASE_*</code> placeholders).';
     }
     document.getElementById('auth-btn').disabled = true;
     return false;
   }
-  try {
-    sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    return true;
-  } catch(e) {
-    showToast('⚠️ Supabase failed to initialise');
-    return false;
-  }
+  showToast('⚠️ Supabase failed to initialise');
+  return false;
 }
 
 // ════════════════════════════════════
@@ -1431,7 +1303,7 @@ function updateFormProgressChip() {
 }
 
 // Mark form dirty on any input change
-document.addEventListener('DOMContentLoaded', function() {
+flOnReady(function() {
   var form = document.getElementById('v-form');
   if (form) {
     form.addEventListener('input', function() { formDirty = true; });
@@ -1993,7 +1865,7 @@ function diaryApplyAuthSession(session) {
 }
 
 // Init on DOM ready
-document.addEventListener('DOMContentLoaded', function() {
+flOnReady(function() {
   (async function() {
   await syncDiaryTrustedUkClock();
   initStatsMoreSection();
@@ -2070,86 +1942,10 @@ document.addEventListener('DOMContentLoaded', function() {
   })();
 });
 
-/**
- * Show a persistent bottom-banner telling the user a new service worker is
- * controlling the page and they should reload to pick up the latest code.
- * Safer than a transient toast — if the user taps away before reading a
- * toast they've missed the prompt entirely. The bar sticks until dismissed
- * or Reload is tapped. Builds the DOM lazily so it doesn't ship as markup.
- * Idempotent: repeated calls are no-ops once the bar is visible.
- */
-var flSwUpdateBarShown = false;
-function flShowSwUpdateBar() {
-  if (flSwUpdateBarShown) return;
-  flSwUpdateBarShown = true;
-  var bar = document.createElement('div');
-  bar.id = 'sw-update-bar';
-  bar.className = 'sw-update-bar';
-  bar.setAttribute('role', 'status');
-  bar.setAttribute('aria-live', 'polite');
-
-  var txt = document.createElement('div');
-  txt.className = 'sw-update-bar-txt';
-  txt.innerHTML = 'New version available'
-    + '<span class="sw-update-bar-sub">Tap Reload to switch to the latest Cull Diary.</span>';
-
-  var btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'sw-update-bar-btn';
-  btn.textContent = 'Reload';
-  btn.addEventListener('click', function() { location.reload(); });
-
-  var x = document.createElement('button');
-  x.type = 'button';
-  x.className = 'sw-update-bar-x';
-  x.setAttribute('aria-label', 'Dismiss update notice');
-  x.textContent = '×';
-  x.addEventListener('click', function() {
-    if (bar.parentNode) bar.parentNode.removeChild(bar);
-    // Note: NOT resetting flSwUpdateBarShown — if the user explicitly
-    // dismisses we don't re-nag on the same page load. Next reload / next
-    // controllerchange they'll get it again.
-  });
-
-  bar.appendChild(txt);
-  bar.appendChild(btn);
-  bar.appendChild(x);
-  document.body.appendChild(bar);
-}
-
-// Register SW when diary is opened directly (index.html also registers — duplicate register is a no-op)
-if ('serviceWorker' in navigator) {
-  // Snapshot the controller present when the page loaded. If this page
-  // never had a controller (= first install / first visit) we must NOT
-  // prompt for reload on the first controllerchange — that's just the
-  // initial activation, not a true update.
-  var flInitialSwController = navigator.serviceWorker.controller;
-
-  // Fires when a new SW takes over. With `skipWaiting()` + `clients.claim()`
-  // in sw.js this happens as soon as the new SW activates, which is the
-  // most reliable signal that there's fresher code in the cache.
-  navigator.serviceWorker.addEventListener('controllerchange', function() {
-    if (flInitialSwController) flShowSwUpdateBar();
-  });
-
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js').then(function(reg) {
-      reg.addEventListener('updatefound', function() {
-        var newWorker = reg.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener('statechange', function() {
-          // Belt-and-braces: if controllerchange hasn't fired yet (e.g. the
-          // SW is stuck waiting because another tab is still holding the
-          // old controller) we still surface the update once the new worker
-          // reaches `installed`.
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            flShowSwUpdateBar();
-          }
-        });
-      });
-    }).catch(function() { /* file:// or blocked */ });
-  });
-}
+// SW registration + update-banner wiring lives in modules/sw-bridge.mjs.
+// Call it once at module init — idempotent, so re-init (hot reload etc.)
+// won't attach duplicate listeners.
+initSwBridge();
 
 // ════════════════════════════════════
 // DATA
@@ -2465,43 +2261,9 @@ function safeUrl(url) {
   return /^https:\/\//.test(url) ? url : null;
 }
 
-/** Signed URL lifetime for private bucket reads (seconds). */
-var CULL_PHOTO_SIGN_EXPIRES = 86400;
-
-/**
- * Build a collision-free storage path for a new cull photo.
- * Format: "<userId>/<ms>-<rand6>.jpg".
- * Rationale: Date.now() alone collides when two uploads fire in the same
- * millisecond — realistic during offline-queue drain where several photos
- * can upload back-to-back inside a tight loop. Combined with `upsert: true`
- * the losing upload silently overwrites the winner and two cull_entries
- * rows end up pointing at the same file.
- */
-function newCullPhotoPath(userId) {
-  var rand = Math.random().toString(36).slice(2, 8);
-  return userId + '/' + Date.now() + '-' + rand + '.jpg';
-}
-
-/**
- * Storage object path within bucket cull-photos: "userId/file.jpg".
- * Accepts legacy full Supabase URLs (public or signed) or stored path.
- */
-function cullPhotoStoragePath(photo_url) {
-  if (!photo_url || typeof photo_url !== 'string') return null;
-  var s = photo_url.trim();
-  if (!s) return null;
-  if (!/^https?:\/\//i.test(s)) {
-    if (/^[0-9a-f-]{36}\//i.test(s)) return s;
-    return null;
-  }
-  var m = s.match(/cull-photos\/([^?]+)/i);
-  if (!m) return null;
-  try {
-    return decodeURIComponent(m[1]);
-  } catch (e) {
-    return m[1];
-  }
-}
+// Photo storage helpers (CULL_PHOTO_SIGN_EXPIRES, newCullPhotoPath,
+// cullPhotoStoragePath) moved to modules/photos.mjs — see Commit G in
+// MODULARISATION-PLAN.md. Imported at the top of this file.
 
 /** After loadEntries: fill _photoDisplayUrl for list/detail (private bucket). */
 async function resolveCullPhotoDisplayUrls(entries) {
@@ -3030,7 +2792,7 @@ async function openDetail(id) {
 // FORM
 // ════════════════════════════════════
 async function openNewEntry() {
-  if (!diaryUkClockReady) {
+  if (!isDiaryUkClockReady()) {
     var okClock = await syncDiaryTrustedUkClock();
     if (!okClock) { showToast('⚠️ UK time unavailable — connect to internet'); return; }
   }
@@ -3216,41 +2978,25 @@ function handlePhoto(input) {
   revokeBlobPreviewUrl(photoPreviewUrl);
   photoPreviewUrl = null;
 
-  // Compress image via canvas before storing
-  var reader = new FileReader();
-  reader.onload = function(ev) {
-    var img = new Image();
-    img.onload = function() {
-      // Target max 800px on longest side, JPEG quality 0.75
-      var MAX = 800;
-      var w = img.width;
-      var h = img.height;
-      if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
-      else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+  // Compression (FileReader → Image → Canvas → Blob at 800px max / 0.75 JPEG)
+  // lives in modules/photos.mjs so the offline-queue code can share it and so
+  // the pipeline is testable in isolation. Everything below the compress call
+  // is DOM state that must stay in diary.js.
+  compressPhotoFile(file).then(function(res) {
+    photoFile = res.file;
+    photoPreviewUrl = res.previewUrl;
 
-      var canvas = document.createElement('canvas');
-      canvas.width  = w;
-      canvas.height = h;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
+    var slot = document.getElementById('photo-slot');
+    slot.className = 'photo-slot filled';
+    slot.innerHTML = '<div class="diary-img-skeleton diary-img-skeleton-slot" aria-hidden="true"></div><img class="diary-img diary-img-fade" src="' + esc(photoPreviewUrl) + '" alt=""><button type="button" class="photo-slot-rm" data-fl-action="remove-photo">✕</button>';
+    diaryWireDiaryImages(slot);
+    document.getElementById('photo-rm-btn').style.display = 'block';
 
-      canvas.toBlob(function(blob) {
-        photoFile = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-        photoPreviewUrl = URL.createObjectURL(blob);
-
-        var slot = document.getElementById('photo-slot');
-        slot.className = 'photo-slot filled';
-        slot.innerHTML = '<div class="diary-img-skeleton diary-img-skeleton-slot" aria-hidden="true"></div><img class="diary-img diary-img-fade" src="' + esc(photoPreviewUrl) + '" alt=""><button type="button" class="photo-slot-rm" data-fl-action="remove-photo">✕</button>';
-        diaryWireDiaryImages(slot);
-        document.getElementById('photo-rm-btn').style.display = 'block';
-
-        var kb = Math.round(photoFile.size / 1024);
-        showToast('📷 Photo ready · ' + kb + ' KB');
-      }, 'image/jpeg', 0.75);
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+    showToast('📷 Photo ready · ' + res.kb + ' KB');
+  }).catch(function(err) {
+    console.warn('Photo compress failed:', err);
+    showToast('⚠️ Photo failed to load');
+  });
 }
 
 function removePhoto() {
@@ -6091,7 +5837,7 @@ async function confirmBulkDelete() {
 var flQuickEntry = { species: null, sex: null, location: '', lat: null, lng: null };
 
 async function openQuickEntry() {
-  if (!diaryUkClockReady) {
+  if (!isDiaryUkClockReady()) {
     var okClock = await syncDiaryTrustedUkClock();
     if (!okClock) { showToast('⚠️ UK time unavailable — connect to internet'); return; }
   }
@@ -6190,7 +5936,7 @@ async function saveQuickEntry() {
   var btn = document.getElementById('qs-save-btn');
   btn.disabled = true; btn.innerHTML = diaryCloudSaveInner('Saving…');
 
-  if (!diaryUkClockReady) {
+  if (!isDiaryUkClockReady()) {
     var okClock = await syncDiaryTrustedUkClock();
     if (!okClock) {
       btn.disabled = false; btn.innerHTML = diaryCloudSaveInner('Save to Cloud');
@@ -6265,155 +6011,14 @@ async function saveQuickEntry() {
 
 
 // Open-Meteo WMO codes → abbrev + label + SVG + strip bar (replaces emoji sky cells)
-function wxCodeLabel(code) {
-  var c = code;
-  if (c === 0 || c === null || c === undefined) {
-    return { abbrev: 'CLR', label: 'Clear', wmoTitle: 'WMO code 0', skySvg: SVG_WX_SKY_CLR, barBg: 'linear-gradient(90deg,#5a6a4a,#c8a84b)' };
-  }
-  if (c <= 2) {
-    return { abbrev: 'PTLY', label: 'Partly cloudy', wmoTitle: 'WMO 1–2', skySvg: SVG_WX_SKY_PTLY, barBg: 'linear-gradient(90deg,#c8a84b,#6b7280)' };
-  }
-  if (c === 3) {
-    return { abbrev: 'OVC', label: 'Overcast', wmoTitle: 'WMO code 3', skySvg: SVG_WX_SKY_OVC, barBg: 'linear-gradient(90deg,#5c6670,#8a9399)' };
-  }
-  if (c <= 49) {
-    return { abbrev: 'FG', label: 'Fog', wmoTitle: 'WMO ≤49', skySvg: SVG_WX_SKY_FOG, barBg: 'linear-gradient(90deg,#5c5568,#8a8299)' };
-  }
-  if (c <= 57) {
-    return { abbrev: 'DZ', label: 'Drizzle', wmoTitle: 'WMO 51–57', skySvg: SVG_WX_SKY_DZ, barBg: 'linear-gradient(90deg,#4a5a70,#7a8aa0)' };
-  }
-  if (c <= 65) {
-    return { abbrev: 'RA', label: 'Rain', wmoTitle: 'WMO 61–65', skySvg: SVG_WX_SKY_RAIN, barBg: 'linear-gradient(90deg,#3d5a80,#6a8ab0)' };
-  }
-  if (c <= 77) {
-    return { abbrev: 'SN', label: 'Snow', wmoTitle: 'WMO 71–77', skySvg: SVG_WX_SKY_SNOW, barBg: 'linear-gradient(90deg,#4a6070,#8a9eaa)' };
-  }
-  if (c <= 82) {
-    return { abbrev: 'SHRA', label: 'Showers', wmoTitle: 'WMO 80–82', skySvg: SVG_WX_SKY_SHOWERS, barBg: 'linear-gradient(90deg,#3d5a80,#5a7a98)' };
-  }
-  if (c <= 86) {
-    return { abbrev: 'SHSN', label: 'Snow showers', wmoTitle: 'WMO 85–86', skySvg: SVG_WX_SKY_SNSH, barBg: 'linear-gradient(90deg,#5a6a78,#9aa8b0)' };
-  }
-  if (c <= 99) {
-    return { abbrev: 'TS', label: 'Thunderstorm', wmoTitle: 'WMO 95–99', skySvg: SVG_WX_SKY_TS, barBg: 'linear-gradient(90deg,#8a6a30,#4a5560)' };
-  }
-  return { abbrev: '–', label: 'Unknown', wmoTitle: 'No code', skySvg: SVG_WX_SKY_UNK, barBg: '#555' };
-}
-
-function windDirLabel(deg) {
-  if (deg === null || deg === undefined) return '';
-  var dirs = ['N','NE','E','SE','S','SW','W','NW'];
-  return dirs[Math.round(deg / 45) % 8];
-}
-
 // ── Weather at time of cull ──────────────────────────────────
-// Fetches from Open-Meteo historical or forecast API
-// Only fetches for entries within last 7 days
-// Stores as JSONB in cull_entries.weather_data
-
-function findOpenMeteoHourlyIndex(times, date, hour) {
-  if (!times || !times.length) return -1;
-  var hh = ('0' + hour).slice(-2);
-  var exact = date + 'T' + hh + ':00';
-  var idx = times.indexOf(exact);
-  if (idx !== -1) return idx;
-  var prefix = date + 'T' + hh + ':';
-  for (var i = 0; i < times.length; i++) {
-    var t = times[i];
-    if (typeof t === 'string' && t.indexOf(prefix) === 0) return i;
-  }
-  return -1;
-}
-
-/**
- * Interpret `YYYY-MM-DD` + `HH:MM` wall-clock strings as Europe/London time and
- * return a UTC epoch-ms. Needed because `new Date("YYYY-MM-DDTHH:MM:00")` uses
- * the device's local TZ — fine at home in the UK, wrong when the user is
- * abroad (a 6.9-day-old entry logged at UK wall-clock could slip past the
- * 7-day gate by an hour when recomputed in CET/EST).
- * Works across BST/GMT transitions by asking Intl for the London offset at the
- * target UTC moment and subtracting it.
- */
-function diaryLondonWallMs(dateStr, timeStr) {
-  var y  = parseInt(dateStr.slice(0, 4), 10);
-  var mo = parseInt(dateStr.slice(5, 7), 10) - 1;
-  var d  = parseInt(dateStr.slice(8, 10), 10);
-  var t  = (timeStr || '12:00').split(':');
-  var h  = parseInt(t[0], 10) || 0;
-  var mn = parseInt(t[1], 10) || 0;
-  var utcMs = Date.UTC(y, mo, d, h, mn);
-  try {
-    var fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      timeZoneName: 'longOffset'
-    });
-    var parts = fmt.formatToParts(new Date(utcMs));
-    var tz = parts.find(function (p) { return p.type === 'timeZoneName'; });
-    if (tz) {
-      var m = tz.value.match(/GMT([+-])(\d{2}):?(\d{2})?/);
-      if (m) {
-        var sign = m[1] === '+' ? 1 : -1;
-        var offMs = sign * ((parseInt(m[2], 10) * 3600000) + (parseInt(m[3] || '0', 10) * 60000));
-        return utcMs - offMs;
-      }
-    }
-  } catch (_) { /* fall through to a best-effort fallback */ }
-  // Fallback: assume device TZ is UK (the overwhelmingly common case).
-  return new Date(dateStr + 'T' + (timeStr || '12:00') + ':00').getTime();
-}
-
-async function fetchCullWeather(date, time, lat, lng) {
-  // date: 'YYYY-MM-DD', time: 'HH:MM', lat/lng: numbers
-  if (!date || !lat || !lng) return null;
-
-  // Interpret the entry's wall-clock as Europe/London so the 7-day gate doesn't
-  // drift when the user's device is on holiday in a different TZ.
-  var entryMs = diaryLondonWallMs(date, time);
-  var nowMs = diaryNow().getTime();
-  var ageDays = (nowMs - entryMs) / 86400000;
-
-  // Skip if older than 7 days or in the future
-  if (ageDays > 7 || ageDays < 0) return null;
-
-  var hour = time ? parseInt(time.split(':')[0]) : 12;
-
-  try {
-    // Use forecast API with past_hours for recent entries
-    // past_hours=168 = 7 days back
-    var url = 'https://api.open-meteo.com/v1/forecast'
-      + '?latitude=' + lat + '&longitude=' + lng
-      + '&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,windgusts_10m,surface_pressure,cloud_cover,weather_code,precipitation'
-      + '&past_days=7&forecast_days=1&timezone=auto';
-
-    var r = await fetch(url);
-    if (!r.ok) return null;
-    var d = await r.json();
-
-    // Find the index matching our date+hour (API may use HH:00 or HH:00:00)
-    var times = d.hourly && d.hourly.time ? d.hourly.time : [];
-    var idx = findOpenMeteoHourlyIndex(times, date, hour);
-    if (idx === -1) return null;
-
-    var h = d.hourly;
-    var windKmh = h.wind_speed_10m ? h.wind_speed_10m[idx] : null;
-    var gustKmh = h.windgusts_10m  ? h.windgusts_10m[idx]  : null;
-
-    return {
-      temp:       h.temperature_2m    ? Math.round(h.temperature_2m[idx] * 10) / 10 : null,
-      wind_mph:   windKmh !== null     ? Math.round(windKmh * 0.621)               : null,
-      gust_mph:   gustKmh !== null     ? Math.round(gustKmh * 0.621)               : null,
-      wind_dir:   h.wind_direction_10m ? h.wind_direction_10m[idx]                 : null,
-      pressure:   h.surface_pressure  ? Math.round(h.surface_pressure[idx])        : null,
-      cloud:      h.cloud_cover        ? h.cloud_cover[idx]                         : null,
-      code:       h.weather_code       ? h.weather_code[idx]                        : null,
-      precip_mm:  h.precipitation     ? h.precipitation[idx]                       : null,
-      fetched_at: diaryNow().toISOString()
-    };
-  } catch(e) {
-    console.warn('Weather fetch failed:', e);
-    return null;
-  }
-}
+// The pure helpers (wxCodeLabel, windDirLabel, findOpenMeteoHourlyIndex,
+// diaryLondonWallMs) and the Open-Meteo fetch (fetchCullWeather) have moved
+// to modules/weather.mjs. See MODULARISATION-PLAN.md → Commit F. The
+// persistence wrapper (attachWeatherToEntry) and the render surface
+// (renderWeatherStrip) stay here because they touch `sb`, `currentUser`,
+// `allEntries`, and `esc()` — all still diary.js-local.
+// Weather rows are stored as JSONB in cull_entries.weather_data.
 
 async function attachWeatherToEntry(entryId, date, time, lat, lng) {
   if (!sb || !currentUser || !entryId) return;
@@ -6974,11 +6579,7 @@ function renderCullMapPins() {
 }
 
 // ── Calibre & Distance Stats ─────────────────────────────────
-var CAL_COLORS = ['linear-gradient(90deg,#5a7a30,#7adf7a)','linear-gradient(90deg,#c8a84b,#f0c870)',
-  'linear-gradient(90deg,#6a1b9a,#ab47bc)','linear-gradient(90deg,#1565c0,#42a5f5)',
-  'linear-gradient(90deg,#c62828,#ef5350)','linear-gradient(90deg,#00695c,#26a69a)'];
-var SP_COLORS_D = {'Red Deer':'#c8a84b','Roe Deer':'#5a7a30','Fallow':'#f57f17',
-  'Muntjac':'#6a1b9a','Sika':'#1565c0','CWD':'#00695c'};
+// CAL_COLORS and SP_COLORS_D moved to modules/stats.mjs (Commit H).
 
 function buildCalibreDistanceStats(entries) {
   // ── Calibre chart ──
@@ -7098,9 +6699,7 @@ function buildCalibreDistanceStats(entries) {
 
 
 // ── Age Class Breakdown ───────────────────────────────────────
-var AGE_CLASSES = ['Calf / Kid / Fawn', 'Yearling', '2–4 years', '5–8 years', '9+ years'];
-var AGE_COLORS  = ['#5a9a3a',   '#5a7a30',  '#c8a84b',   '#f57f17',   '#c62828'];
-var AGE_GROUPS  = { 'Juvenile': ['Calf / Kid / Fawn','Yearling'], 'Adult': ['2–4 years'], 'Mature': ['5–8 years','9+ years'] };
+// AGE_CLASSES, AGE_COLORS, AGE_GROUPS moved to modules/stats.mjs (Commit H).
 
 function buildAgeStats(entries) {
   var card  = document.getElementById('age-card');
@@ -7218,16 +6817,8 @@ function openOfflineDb() {
   });
 }
 
-function dataUrlToBlob(dataUrl) {
-  var arr = (dataUrl || '').split(',');
-  var mimeMatch = arr[0] ? arr[0].match(/:(.*?);/) : null;
-  if (!mimeMatch || !arr[1]) throw new Error('Malformed photo data URL');
-  var mime = mimeMatch[1];
-  var bstr = atob(arr[1]);
-  var u8arr = new Uint8Array(bstr.length);
-  for (var i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
-  return new Blob([u8arr], { type: mime });
-}
+// dataUrlToBlob() moved to modules/photos.mjs — imported at the top of this
+// file. Still used at its 2 offline-queue call sites unchanged.
 
 function saveOfflinePhotoBlob(photoId, blob) {
   return openOfflineDb().then(function(db) {
@@ -7657,37 +7248,17 @@ window.addEventListener('offline', function() {
 function buildShooterStats(entries) {
   var card  = document.getElementById('shooter-card');
   var chart = document.getElementById('shooter-chart');
+  var agg = aggregateShooterStats(entries);
 
-  // Count by shooter — normalise blank/undefined to 'Self'
-  var counts = {};
-  entries.forEach(function(e) {
-    var s = (e.shooter && e.shooter.trim()) ? e.shooter.trim() : 'Self';
-    counts[s] = (counts[s]||0) + 1;
-  });
-
-  var shooters = Object.keys(counts);
-
-  // Hide card if everyone is Self (no point showing it)
-  if (shooters.length <= 1 && shooters[0] === 'Self') {
-    card.style.display = 'none';
-    return;
-  }
-
+  // Hide card if everyone is Self (no point showing it) — the aggregator
+  // raises this flag so the render logic here stays one-liner.
+  if (agg.isAllSelf) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
-  // Sort: Self first, then by count desc
-  shooters.sort(function(a,b) {
-    if (a === 'Self') return -1;
-    if (b === 'Self') return 1;
-    return counts[b] - counts[a];
-  });
-
-  var maxCnt = Math.max.apply(null, shooters.map(function(s){ return counts[s]; }));
-
   var html = '';
-  shooters.forEach(function(s, i) {
-    var cnt = counts[s];
-    var pct = Math.round(cnt/maxCnt*100);
+  agg.sortedNames.forEach(function(s) {
+    var cnt = agg.counts[s];
+    var pct = Math.round(cnt / agg.maxCount * 100);
     var barClr = s === 'Self'
       ? 'linear-gradient(90deg,#5a7a30,#7adf7a)'
       : 'linear-gradient(90deg,#c8a84b,#f0c870)';
@@ -7697,47 +7268,31 @@ function buildShooterStats(entries) {
       + '<div class="bar-cnt">'+cnt+'</div>'
       + '</div>';
   });
-
   chart.innerHTML = html;
 }
 
 function buildDestinationStats(entries) {
   var card  = document.getElementById('destination-card');
   var chart = document.getElementById('destination-chart');
+  var agg = aggregateDestinationStats(entries);
 
-  var counts = {};
-  entries.forEach(function(e) {
-    if (e.destination) counts[e.destination] = (counts[e.destination]||0) + 1;
-  });
-
-  var dests = Object.keys(counts);
-
-  // Hide if no entries have a destination set
-  if (dests.length === 0) {
-    card.style.display = 'none';
-    return;
-  }
-
+  if (agg.sortedNames.length === 0) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
-  // Sort by count descending
-  dests.sort(function(a,b) { return counts[b] - counts[a]; });
-
-  var maxCnt = Math.max.apply(null, dests.map(function(d){ return counts[d]; }));
   var destColors = {
     'Self / personal use': 'linear-gradient(90deg,#5a7a30,#7adf7a)',
-    'Game dealer': 'linear-gradient(90deg,#c8a84b,#f0c870)',
-    'Friend / family': 'linear-gradient(90deg,#1565c0,#42a5f5)',
-    'Stalking client': 'linear-gradient(90deg,#6a1b9a,#ab47bc)',
-    'Estate / landowner': 'linear-gradient(90deg,#00695c,#4db6ac)',
-    'Left on hill': 'linear-gradient(90deg,#888,#aaa)',
-    'Condemned': 'linear-gradient(90deg,#c62828,#ef5350)'
+    'Game dealer':         'linear-gradient(90deg,#c8a84b,#f0c870)',
+    'Friend / family':     'linear-gradient(90deg,#1565c0,#42a5f5)',
+    'Stalking client':     'linear-gradient(90deg,#6a1b9a,#ab47bc)',
+    'Estate / landowner':  'linear-gradient(90deg,#00695c,#4db6ac)',
+    'Left on hill':        'linear-gradient(90deg,#888,#aaa)',
+    'Condemned':           'linear-gradient(90deg,#c62828,#ef5350)'
   };
 
   var html = '';
-  dests.forEach(function(d) {
-    var cnt = counts[d];
-    var pct = Math.round(cnt/maxCnt*100);
+  agg.sortedNames.forEach(function(d) {
+    var cnt = agg.counts[d];
+    var pct = Math.round(cnt / agg.maxCount * 100);
     var barClr = destColors[d] || 'linear-gradient(90deg,#5a7a30,#7adf7a)';
     html += '<div class="bar-row">'
       + '<div class="bar-lbl">' + esc(d) + '</div>'
@@ -7745,7 +7300,6 @@ function buildDestinationStats(entries) {
       + '<div class="bar-cnt">'+cnt+'</div>'
       + '</div>';
   });
-
   chart.innerHTML = html;
 }
 
@@ -7754,40 +7308,18 @@ function buildTimeOfDayStats(entries) {
   var chart = document.getElementById('time-chart');
   if (!card || !chart) return;
 
-  var buckets = [
-    { label: 'Dawn (05–07)', min: 5, max: 7, clr: 'linear-gradient(90deg,#f57f17,#ffb74d)' },
-    { label: 'Morning (08–10)', min: 8, max: 10, clr: 'linear-gradient(90deg,#c8a84b,#f0c870)' },
-    { label: 'Midday (11–14)', min: 11, max: 14, clr: 'linear-gradient(90deg,#5a7a30,#7adf7a)' },
-    { label: 'Afternoon (15–17)', min: 15, max: 17, clr: 'linear-gradient(90deg,#1565c0,#42a5f5)' },
-    { label: 'Dusk (18–20)', min: 18, max: 20, clr: 'linear-gradient(90deg,#6a1b9a,#ab47bc)' },
-    { label: 'Night (21–04)', min: -1, max: -1, clr: 'linear-gradient(90deg,#444,#888)' }
-  ];
-  var counts = [0,0,0,0,0,0];
-
-  entries.forEach(function(e) {
-    if (!e.time) return;
-    var h = parseInt(e.time.split(':')[0], 10);
-    if (isNaN(h)) return;
-    var placed = false;
-    for (var i = 0; i < 5; i++) {
-      if (h >= buckets[i].min && h <= buckets[i].max) { counts[i]++; placed = true; break; }
-    }
-    if (!placed) counts[5]++;
-  });
-
-  var total = counts.reduce(function(a,b){ return a+b; }, 0);
-  if (total === 0) { card.style.display = 'none'; return; }
+  var agg = aggregateTimeOfDayStats(entries);
+  if (agg.total === 0) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
-  var maxCnt = Math.max.apply(null, counts);
   var html = '';
-  for (var j = 0; j < buckets.length; j++) {
-    if (counts[j] === 0) continue;
-    var pct = Math.round(counts[j] / maxCnt * 100);
+  for (var j = 0; j < agg.buckets.length; j++) {
+    if (agg.counts[j] === 0) continue;
+    var pct = Math.round(agg.counts[j] / agg.maxCount * 100);
     html += '<div class="bar-row">'
-      + '<div class="bar-lbl">' + buckets[j].label + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+buckets[j].clr+';"></div></div>'
-      + '<div class="bar-cnt">'+counts[j]+'</div>'
+      + '<div class="bar-lbl">' + agg.buckets[j].label + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+agg.buckets[j].clr+';"></div></div>'
+      + '<div class="bar-cnt">'+agg.counts[j]+'</div>'
       + '</div>';
   }
   chart.innerHTML = html;
