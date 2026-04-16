@@ -105,7 +105,11 @@ export const SVG_WX_SKY_PTLY =
   '<circle cx="17.5" cy="7" r="2.5"/><path d="M4 18h12a3 3 0 0 0 0-6h-.5A4.5 4.5 0 0 0 4 11a3 3 0 0 0 0 7z"/></svg>';
 export const SVG_WX_SKY_OVC =
   '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M7 18h11a4 4 0 0 0 0-8 0h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg>';
+  // Path identical to SVG_FL_CLOUD above — previously had a stray `0 `
+  // between the arc's end-y (-8) and the `h` command, which made Chromium
+  // reject the attribute with "Expected number" because the `a` arc command
+  // takes exactly 7 params. Fixed 2026-04-16 during modularisation.
+  '<path d="M7 18h11a4 4 0 0 0 0-8h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg>';
 export const SVG_WX_SKY_FOG =
   '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
   '<path d="M4 9h16M3 12h18M5 15h14"/></svg>';

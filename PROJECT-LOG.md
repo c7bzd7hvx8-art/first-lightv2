@@ -68,6 +68,8 @@ diary.js is now **9,707 lines** (was ~9,845 at the start of Phase 1). Total redu
 
 The headline win here isn't lines (diary.js is 9,702 now, ~5 fewer than D) — it's **dependency direction**: future modules (`auth.mjs`, `data.mjs`) will import the Supabase client directly from one canonical place instead of reaching into `window.sb` via a shim. Tests: 31/31 green.
 
+**Bugfix caught during Commit E smoke-test:** `SVG_WX_SKY_OVC` (overcast cloud weather icon) had a stray extra `0` in its `d` path — the arc command `a4 4 0 0 0 0-8 0h-.5` has 8 numeric params instead of the required 7, making Chromium reject the attribute with `<path> attribute d: Expected number`. The glyph just didn't render on any entry with overcast weather and the console logged one error per render. Pre-existing bug copied verbatim into `svg-icons.mjs` at Commit D; noticed when the user opened a detail view. Fixed by removing the stray `0 ` so the path matches the identical (working) cloud shape in `SVG_FL_CLOUD`. Comment added pointing at the fix so the pattern isn't re-introduced. SW bumped to `v7.43`.
+
 ---
 
 ## 2026-04-16 — Audit round-2 sweep (11 items, all closed)
