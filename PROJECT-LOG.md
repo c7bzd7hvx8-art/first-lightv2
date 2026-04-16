@@ -52,6 +52,14 @@ Tests: 31/31 green. No linter errors.
 
 Tests: 31/31 green. No linter errors.
 
+**Commit D — `modules/svg-icons.mjs`.**
+
+- **`modules/svg-icons.mjs`** (NEW) — 32 inline-SVG icon blobs (target reticle, cloud / clipboard / camera / image / pin / GPS / pencil / PDF / trash / book / zap / signal / 3 toast tones, 3 weather metric icons, 10 sky-condition icons) extracted verbatim from diary.js L212-330. All exported `const`s; pure data, zero logic. Callers reference the same `SVG_*` names via a single named import.
+- **`diary.js`** — one extended import block at the top brings the whole set into scope. Deleted ~120 lines of string-literal definitions (the biggest single block of pure data in the file). Callers at ~40 consumption sites (toast renderers, plan/target cards, form buttons, list cards, weather card, detail view) are unchanged — the imported names shadow the deleted `var`s with identical values.
+- **`sw.js`** — `./modules/svg-icons.mjs` added to `PRECACHE_URLS`. Bumped to `v7.41`.
+
+diary.js is now **9,707 lines** (was ~9,845 at the start of Phase 1). Total reduction to date: ~140 lines. Tests: 31/31 green.
+
 ---
 
 ## 2026-04-16 — Audit round-2 sweep (11 items, all closed)
