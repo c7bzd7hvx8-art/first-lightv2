@@ -32,6 +32,18 @@ Working on branch `feat/modularise-phase-1` (main stays pristine). Backup = orig
 
 Tests: 31/31 green. No linter errors. Awaiting browser smoke-test before Commit B (first real extraction: `modules/clock.mjs`).
 
+**Smoke-test result:** green. No red errors in DevTools; sign-in screen renders; form opens; abnormality chips render (the `renderAbnormalityGrid` → `ABNORMALITY_OPTIONS` path that crashed before). One fixup committed between A and B:
+
+- **Commit A-fix** `fix(diary): defer flOnReady callback to microtask` — changed `flOnReady` from `fn()` (synchronous) to `queueMicrotask(fn)` because under `type="module"` the script runs mid-module before later `var`s are initialised; a synchronous callback at L1453 called `renderAbnormalityGrid()` which read `ABNORMALITY_OPTIONS` that didn't exist yet. `queueMicrotask` runs after the module's top-level completes. SW bumped to 7.38.
+
+**Commit B — first real extraction: `modules/clock.mjs`.**
+
+- **`modules/clock.mjs`** (NEW) — trusted UK clock extracted verbatim from diary.js L134-215. Exports `diaryNow()`, `syncDiaryTrustedUkClock({ supabaseUrl, supabaseKey })`, `isDiaryUkClockReady()`. The Supabase `Date` header fallback (third-tier after timeapi.io + worldtimeapi.org) now receives its URL / anon key as an explicit argument instead of reading globals — the module is portable. localStorage hydration runs at module init exactly as before, using the same `fl_uk_clock_*` keys so existing users' cached offsets survive.
+- **`diary.js`** — added Tier-0/1 import block at the top: `import { diaryNow, isDiaryUkClockReady, syncDiaryTrustedUkClock as flClockSync } from './modules/clock.mjs';`. Deleted the 82-line inline clock block. Kept a 7-line `syncDiaryTrustedUkClock()` shim that forwards `{ supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_KEY }` so the 5 call sites (`openNewEntry`, `openQuickEntry`, `saveQuickEntry`, init IIFE, online-sync listener) didn't need editing. Updated the 3 sites that read the old `diaryUkClockReady` flag to `isDiaryUkClockReady()`.
+- **`sw.js`** — `./modules/clock.mjs` added to `PRECACHE_URLS`. `isStaticAsset()` already catches ES modules via `request.destination === 'script'`, so no other SW logic changes. Bumped to `v7.39`.
+
+Tests: 31/31 green. No linter errors.
+
 ---
 
 ## 2026-04-16 — Audit round-2 sweep (11 items, all closed)

@@ -1,6 +1,18 @@
 /* Cull Diary — App v2.0 */
 
 // ══════════════════════════════════════════════════════════════
+// MODULE IMPORTS (modularisation Phase 1 — see MODULARISATION-PLAN.md)
+// ══════════════════════════════════════════════════════════════
+// Each import lands here as we extract. Order: Tier-0 / Tier-1 first so
+// later tiers can build on them. All modules live under ./modules/ except
+// lib/fl-pure.mjs which predates the plan.
+import {
+  diaryNow,
+  isDiaryUkClockReady,
+  syncDiaryTrustedUkClock as flClockSync
+} from './modules/clock.mjs';
+
+// ══════════════════════════════════════════════════════════════
 // GLOBALS INDEX (partial — full migration deferred to P3 code-quality #1)
 // ══════════════════════════════════════════════════════════════
 // Migrated (use these):
@@ -131,87 +143,17 @@ var PLAN_SPECIES = [
   { name:'CWD',       color:'#00695c', key:'cwd',     mLbl:'Buck', fLbl:'Doe'  },
 ];
 
-// ── Trusted UK clock (server-synced) ──────────────────────────
-// Ordered by observed reliability. timeapi.io is tried first because worldtimeapi.org
-// has been intermittently returning ERR_CONNECTION_RESET (noisy red console errors).
-// worldtimeapi is kept as a secondary fallback, then Supabase Date header (added later).
-var DIARY_UK_CLOCK_ENDPOINTS = [
-  'https://timeapi.io/api/Time/current/zone?timeZone=Europe%2FLondon',
-  'https://worldtimeapi.org/api/timezone/Europe/London'
-];
-var DIARY_UK_CLOCK_OFFSET_KEY = 'fl_uk_clock_offset_ms';
-var DIARY_UK_CLOCK_SYNCED_AT_KEY = 'fl_uk_clock_synced_at_ms';
-var diaryUkClockOffsetMs = 0;
-var diaryUkClockReady = false;
-var diaryUkClockSyncInFlight = null;
-
-(function diaryLoadUkClockOffset() {
-  try {
-    var off = parseInt(localStorage.getItem(DIARY_UK_CLOCK_OFFSET_KEY) || '', 10);
-    var syncedAt = parseInt(localStorage.getItem(DIARY_UK_CLOCK_SYNCED_AT_KEY) || '', 10);
-    if (Number.isFinite(off) && Number.isFinite(syncedAt) && (Date.now() - syncedAt) < (24 * 60 * 60 * 1000)) {
-      diaryUkClockOffsetMs = off;
-      diaryUkClockReady = true;
-    }
-  } catch (_) {}
-})();
-
-function diaryNow() {
-  return new Date(Date.now() + diaryUkClockOffsetMs);
-}
-
+// ── Trusted UK clock ───────────────────────────────────────────
+// Implementation lives in ./modules/clock.mjs. This shim preserves the
+// zero-arg `syncDiaryTrustedUkClock()` signature used across diary.js (5
+// call sites) while passing the Supabase anon config through for the
+// third-tier fallback. When call sites are progressively migrated to
+// import from the module directly, the shim drops out.
 async function syncDiaryTrustedUkClock() {
-  if (diaryUkClockSyncInFlight) return diaryUkClockSyncInFlight;
-  diaryUkClockSyncInFlight = (async function() {
-    try {
-      for (var i = 0; i < DIARY_UK_CLOCK_ENDPOINTS.length; i++) {
-        try {
-          var r = await fetch(DIARY_UK_CLOCK_ENDPOINTS[i], { cache: 'no-store' });
-          if (!r.ok) continue;
-          var d = await r.json();
-          var iso = d && (d.utc_datetime || d.datetime || d.dateTime);
-          var serverMs = Date.parse(String(iso || ''));
-          if (!Number.isFinite(serverMs)) continue;
-          diaryUkClockOffsetMs = serverMs - Date.now();
-          diaryUkClockReady = true;
-          try {
-            localStorage.setItem(DIARY_UK_CLOCK_OFFSET_KEY, String(diaryUkClockOffsetMs));
-            localStorage.setItem(DIARY_UK_CLOCK_SYNCED_AT_KEY, String(Date.now()));
-          } catch (_) {}
-          return true;
-        } catch (_) {}
-      }
-      // Third fallback: Supabase edge Date header (UTC). Convert via Date.parse().
-      // SUPABASE_URL / SUPABASE_KEY are var-hoisted from the config block
-      // below (see SUPABASE CONFIG) so referencing them here is safe; we
-      // deliberately do NOT re-declare the URL here — one source of truth.
-      try {
-        if (!SUPABASE_URL || !SUPABASE_KEY) return !!diaryUkClockReady;
-        var sr = await fetch(SUPABASE_URL.replace(/\/+$/,'') + '/rest/v1/', {
-          cache: 'no-store',
-          headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: 'Bearer ' + SUPABASE_KEY
-          }
-        });
-        var hDate = sr && sr.headers && sr.headers.get ? sr.headers.get('date') : '';
-        var supaMs = Date.parse(String(hDate || ''));
-        if (Number.isFinite(supaMs)) {
-          diaryUkClockOffsetMs = supaMs - Date.now();
-          diaryUkClockReady = true;
-          try {
-            localStorage.setItem(DIARY_UK_CLOCK_OFFSET_KEY, String(diaryUkClockOffsetMs));
-            localStorage.setItem(DIARY_UK_CLOCK_SYNCED_AT_KEY, String(Date.now()));
-          } catch (_) {}
-          return true;
-        }
-      } catch (_) {}
-      return !!diaryUkClockReady;
-    } finally {
-      diaryUkClockSyncInFlight = null;
-    }
-  })();
-  return diaryUkClockSyncInFlight;
+  return flClockSync({
+    supabaseUrl: (typeof SUPABASE_URL === 'string') ? SUPABASE_URL : '',
+    supabaseKey: (typeof SUPABASE_KEY === 'string') ? SUPABASE_KEY : ''
+  });
 }
 
 /** Match PLAN_SPECIES row for syndicate / plan UIs; unknown names get a neutral dot. */
@@ -3049,7 +2991,7 @@ async function openDetail(id) {
 // FORM
 // ════════════════════════════════════
 async function openNewEntry() {
-  if (!diaryUkClockReady) {
+  if (!isDiaryUkClockReady()) {
     var okClock = await syncDiaryTrustedUkClock();
     if (!okClock) { showToast('⚠️ UK time unavailable — connect to internet'); return; }
   }
@@ -6110,7 +6052,7 @@ async function confirmBulkDelete() {
 var flQuickEntry = { species: null, sex: null, location: '', lat: null, lng: null };
 
 async function openQuickEntry() {
-  if (!diaryUkClockReady) {
+  if (!isDiaryUkClockReady()) {
     var okClock = await syncDiaryTrustedUkClock();
     if (!okClock) { showToast('⚠️ UK time unavailable — connect to internet'); return; }
   }
@@ -6209,7 +6151,7 @@ async function saveQuickEntry() {
   var btn = document.getElementById('qs-save-btn');
   btn.disabled = true; btn.innerHTML = diaryCloudSaveInner('Saving…');
 
-  if (!diaryUkClockReady) {
+  if (!isDiaryUkClockReady()) {
     var okClock = await syncDiaryTrustedUkClock();
     if (!okClock) {
       btn.disabled = false; btn.innerHTML = diaryCloudSaveInner('Save to Cloud');
