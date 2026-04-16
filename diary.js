@@ -13,6 +13,10 @@ import {
 } from './modules/clock.mjs';
 import { initSwBridge } from './modules/sw-bridge.mjs';
 import {
+  SUPABASE_URL, SUPABASE_KEY, sb,
+  initSupabase as flSupabaseInit
+} from './modules/supabase.mjs';
+import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
   SVG_FL_IMAGE_OFF, SVG_FL_PIN, SVG_FL_GPS, SVG_FL_PENCIL,
@@ -159,13 +163,10 @@ var PLAN_SPECIES = [
 // Implementation lives in ./modules/clock.mjs. This shim preserves the
 // zero-arg `syncDiaryTrustedUkClock()` signature used across diary.js (5
 // call sites) while passing the Supabase anon config through for the
-// third-tier fallback. When call sites are progressively migrated to
-// import from the module directly, the shim drops out.
+// third-tier fallback. SUPABASE_URL / SUPABASE_KEY are imported from
+// ./modules/supabase.mjs at the top of this file.
 async function syncDiaryTrustedUkClock() {
-  return flClockSync({
-    supabaseUrl: (typeof SUPABASE_URL === 'string') ? SUPABASE_URL : '',
-    supabaseKey: (typeof SUPABASE_KEY === 'string') ? SUPABASE_KEY : ''
-  });
+  return flClockSync({ supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_KEY });
 }
 
 /** Match PLAN_SPECIES row for syndicate / plan UIs; unknown names get a neutral dot. */
@@ -653,32 +654,26 @@ async function saveTargets() {
 }
 
 // ════════════════════════════════════
-// SUPABASE CONFIG — replace with your project URL and anon key
-// Get these from: supabase.com → your project → Settings → API
+// SUPABASE CONFIG
+// Implementation and credentials live in ./modules/supabase.mjs. This shim
+// keeps the old boolean-returning `initSupabase()` API used by the init
+// IIFE, and translates the module's richer result object into the existing
+// two app-specific UI paths (setup-notice DOM rewrite vs transient toast).
 // ════════════════════════════════════
-var SUPABASE_URL  = 'https://sjaasuqeknvvmdpydfsz.supabase.co';
-var SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqYWFzdXFla252dm1kcHlkZnN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NjMzMzIsImV4cCI6MjA5MDIzOTMzMn0.aiJaKoLCI3jUkOgifqMLuhp8NnAFK0T24Va6r2CLzgw';
-
-var sb = null;
-var SUPABASE_CONFIGURED = (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_KEY !== 'YOUR_SUPABASE_ANON_KEY');
-
 function initSupabase() {
-  if (!SUPABASE_CONFIGURED) {
-    // Show setup notice on auth card instead of crashing
+  var result = flSupabaseInit();
+  if (result.ok) return true;
+  if (result.reason === 'not-configured') {
+    // Show setup notice on auth card instead of crashing.
     var note = document.querySelector('.auth-note');
     if (note) {
-      note.innerHTML = '<span style="color:#c62828;font-weight:700;">Supabase not configured.</span><br>Open <strong>diary.js</strong> and set<br><code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code><br>(replace the <code>YOUR_SUPABASE_*</code> placeholders).';
+      note.innerHTML = '<span style="color:#c62828;font-weight:700;">Supabase not configured.</span><br>Open <strong>modules/supabase.mjs</strong> and set<br><code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code><br>(replace the <code>YOUR_SUPABASE_*</code> placeholders).';
     }
     document.getElementById('auth-btn').disabled = true;
     return false;
   }
-  try {
-    sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    return true;
-  } catch(e) {
-    showToast('⚠️ Supabase failed to initialise');
-    return false;
-  }
+  showToast('⚠️ Supabase failed to initialise');
+  return false;
 }
 
 // ════════════════════════════════════

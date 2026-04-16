@@ -60,6 +60,14 @@ Tests: 31/31 green. No linter errors.
 
 diary.js is now **9,707 lines** (was ~9,845 at the start of Phase 1). Total reduction to date: ~140 lines. Tests: 31/31 green.
 
+**Commit E — `modules/supabase.mjs`.**
+
+- **`modules/supabase.mjs`** (NEW) — thin wrapper over the `@supabase/supabase-js` UMD global. Exports the project URL / anon key as module constants, a `SUPABASE_CONFIGURED` boolean, the `sb` client as a **live binding** (`export let sb = null`), and an `initSupabase()` that returns a structured result (`{ ok: true } | { ok: false, reason: 'not-configured' | 'error' }`). DOM side-effects removed from the module — the caller (diary.js) now owns the two app-specific failure UIs (auth-card setup notice, error toast).
+- **`diary.js`** — imports `SUPABASE_URL`, `SUPABASE_KEY`, `sb`, and the raw init function. The `initSupabase()` call site (`if (!initSupabase()) return;`) is unchanged — a thin shim maps the module's result object to the old boolean contract and to the DOM / toast UI. All 88 `sb.xxx` call sites unchanged — they now read the module's live binding. Dropped the defensive `typeof SUPABASE_URL === 'string'` guards in the clock shim (imports are typed and always in scope).
+- **`sw.js`** — `./modules/supabase.mjs` added to `PRECACHE_URLS`. Bumped to `v7.42`.
+
+The headline win here isn't lines (diary.js is 9,702 now, ~5 fewer than D) — it's **dependency direction**: future modules (`auth.mjs`, `data.mjs`) will import the Supabase client directly from one canonical place instead of reaching into `window.sb` via a shim. Tests: 31/31 green.
+
 ---
 
 ## 2026-04-16 — Audit round-2 sweep (11 items, all closed)
