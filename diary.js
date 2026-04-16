@@ -99,13 +99,18 @@ function flDebugLog(level, label, details) {
 // Under <script type="module"> the script is deferred; by the time this file
 // runs, DOMContentLoaded has already fired and a plain
 // `document.addEventListener('DOMContentLoaded', fn)` callback would never
-// execute. This helper runs `fn` immediately if the DOM is already parsed,
-// otherwise it behaves like the old listener. Safe under classic-script too.
+// execute. This helper runs `fn` after the module's synchronous top-level
+// finishes (via queueMicrotask) — otherwise callbacks registered early in
+// the file would fire before later `var` declarations have been initialised,
+// crashing with "Cannot read properties of undefined". Safe under classic-
+// script too because the microtask queue drains after the current script.
 function flOnReady(fn) {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', fn);
   } else {
-    fn();
+    // Defer to microtask so the callback observes the final module state
+    // (all top-level `var`s and function declarations initialised).
+    queueMicrotask(fn);
   }
 }
 
