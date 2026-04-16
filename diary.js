@@ -11,6 +11,7 @@ import {
   isDiaryUkClockReady,
   syncDiaryTrustedUkClock as flClockSync
 } from './modules/clock.mjs';
+import { initSwBridge } from './modules/sw-bridge.mjs';
 
 // ══════════════════════════════════════════════════════════════
 // GLOBALS INDEX (partial — full migration deferred to P3 code-quality #1)
@@ -2031,86 +2032,10 @@ flOnReady(function() {
   })();
 });
 
-/**
- * Show a persistent bottom-banner telling the user a new service worker is
- * controlling the page and they should reload to pick up the latest code.
- * Safer than a transient toast — if the user taps away before reading a
- * toast they've missed the prompt entirely. The bar sticks until dismissed
- * or Reload is tapped. Builds the DOM lazily so it doesn't ship as markup.
- * Idempotent: repeated calls are no-ops once the bar is visible.
- */
-var flSwUpdateBarShown = false;
-function flShowSwUpdateBar() {
-  if (flSwUpdateBarShown) return;
-  flSwUpdateBarShown = true;
-  var bar = document.createElement('div');
-  bar.id = 'sw-update-bar';
-  bar.className = 'sw-update-bar';
-  bar.setAttribute('role', 'status');
-  bar.setAttribute('aria-live', 'polite');
-
-  var txt = document.createElement('div');
-  txt.className = 'sw-update-bar-txt';
-  txt.innerHTML = 'New version available'
-    + '<span class="sw-update-bar-sub">Tap Reload to switch to the latest Cull Diary.</span>';
-
-  var btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'sw-update-bar-btn';
-  btn.textContent = 'Reload';
-  btn.addEventListener('click', function() { location.reload(); });
-
-  var x = document.createElement('button');
-  x.type = 'button';
-  x.className = 'sw-update-bar-x';
-  x.setAttribute('aria-label', 'Dismiss update notice');
-  x.textContent = '×';
-  x.addEventListener('click', function() {
-    if (bar.parentNode) bar.parentNode.removeChild(bar);
-    // Note: NOT resetting flSwUpdateBarShown — if the user explicitly
-    // dismisses we don't re-nag on the same page load. Next reload / next
-    // controllerchange they'll get it again.
-  });
-
-  bar.appendChild(txt);
-  bar.appendChild(btn);
-  bar.appendChild(x);
-  document.body.appendChild(bar);
-}
-
-// Register SW when diary is opened directly (index.html also registers — duplicate register is a no-op)
-if ('serviceWorker' in navigator) {
-  // Snapshot the controller present when the page loaded. If this page
-  // never had a controller (= first install / first visit) we must NOT
-  // prompt for reload on the first controllerchange — that's just the
-  // initial activation, not a true update.
-  var flInitialSwController = navigator.serviceWorker.controller;
-
-  // Fires when a new SW takes over. With `skipWaiting()` + `clients.claim()`
-  // in sw.js this happens as soon as the new SW activates, which is the
-  // most reliable signal that there's fresher code in the cache.
-  navigator.serviceWorker.addEventListener('controllerchange', function() {
-    if (flInitialSwController) flShowSwUpdateBar();
-  });
-
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js').then(function(reg) {
-      reg.addEventListener('updatefound', function() {
-        var newWorker = reg.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener('statechange', function() {
-          // Belt-and-braces: if controllerchange hasn't fired yet (e.g. the
-          // SW is stuck waiting because another tab is still holding the
-          // old controller) we still surface the update once the new worker
-          // reaches `installed`.
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            flShowSwUpdateBar();
-          }
-        });
-      });
-    }).catch(function() { /* file:// or blocked */ });
-  });
-}
+// SW registration + update-banner wiring lives in modules/sw-bridge.mjs.
+// Call it once at module init — idempotent, so re-init (hot reload etc.)
+// won't attach duplicate listeners.
+initSwBridge();
 
 // ════════════════════════════════════
 // DATA

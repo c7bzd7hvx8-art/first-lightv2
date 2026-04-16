@@ -5,7 +5,7 @@
 // the cache strings (`v7.34`) because they were three separate literals.
 // Bumping triggers the `activate` step to sweep old caches and reload clients
 // via the `controllerchange` path in diary.js.
-const SW_VERSION = '7.39';
+const SW_VERSION = '7.40';
 const STATIC_CACHE  = 'first-light-static-v'  + SW_VERSION;
 const RUNTIME_CACHE = 'first-light-runtime-v' + SW_VERSION;
 
@@ -27,6 +27,7 @@ const PRECACHE_URLS = [
   // entry here means the very first offline session on a fresh device
   // 404s the import and the app is non-functional.
   './modules/clock.mjs',
+  './modules/sw-bridge.mjs',
   './privacy.html',
   './manifest.json',
   './manifest-diary.json',
