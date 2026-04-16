@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legal banner — state previews</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .preview-page { padding: 20px 14px 48px; max-width: 520px; margin: 0 auto; }
+    .preview-page h1 {
+      font-family: 'Playfair Display', serif; font-size: 22px; color: var(--cream);
+      margin-bottom: 8px; font-weight: 700;
+    }
+    .preview-page .preview-lead {
+      font-size: 13px; color: var(--sage); margin-bottom: 24px; line-height: 1.45;
+    }
+    .preview-strip {
+      margin-bottom: 28px;
+    }
+    .preview-strip h2 {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.45); margin-bottom: 10px; font-family: 'DM Sans', sans-serif;
+    }
+    .preview-strip .preview-note {
+      font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 8px; line-height: 1.4;
+    }
+    /* Example legal window: 04:00–22:00; rise 05:30; set 20:30 — zone widths match app.js */
+    .zone-dawn { flex: 0 0 8.33% !important; min-width: 0; }
+    .zone-core { flex: 0 0 83.34% !important; min-width: 0; }
+    .zone-dusk { flex: 0 0 8.33% !important; min-width: 0; }
+    .tick-sr { left: 8.33%; }
+    .tick-ss { left: 91.67%; }
+    .preview-moon-line { font-size: 10px; color: rgba(255, 255, 220, 0.78); }
+    .preview-moon-sub { font-size: 9px; color: rgba(255, 255, 255, 0.5); }
+  </style>
+</head>
+<body>
+  <div class="bg-layer" aria-hidden="true"></div>
+  <div class="preview-page">
+    <h1>Legal banner — four states</h1>
+    <p class="preview-lead">Static snapshots using the same CSS as the app. Example window: legal start <strong>04:00</strong>, legal end <strong>22:00</strong>, sunrise <strong>05:30</strong>, sunset <strong>20:30</strong>. Open this file in a browser to see the real colours and typography.</p>
+
+    <!-- 1: Outside legal hours (before dawn) -->
+    <section class="preview-strip">
+      <h2>1 · Outside legal hours (before dawn)</h2>
+      <div class="legal-banner illegal" role="region" aria-label="Preview">
+        <div class="legal-banner-inner">
+          <div class="banner-clock-stack">
+            <div class="banner-status-row">
+              <span class="banner-status-dot" aria-hidden="true"></span>
+              <span class="status-label">Outside of Legal Hours</span>
+            </div>
+            <div class="banner-countdown-display countdown-dim">02:00:00</div>
+            <div class="banner-countdown-hint">Until legal</div>
+          </div>
+          <div class="banner-timeline" role="img" aria-label="Timeline preview">
+            <div class="banner-tl-col banner-tl-col--left">
+              <span class="banner-tl-kicker">Legal start</span>
+              <span class="banner-tl-time">04:00</span>
+              <span class="banner-tl-hint">↑ Rise <span>05:30</span></span>
+            </div>
+            <div class="banner-tl-track-outer">
+              <div class="banner-tl-track">
+                <div class="banner-tl-zones" aria-hidden="true">
+                  <span class="banner-tl-zone banner-tl-zone--dawn zone-dawn"></span>
+                  <span class="banner-tl-zone banner-tl-zone--core zone-core"></span>
+                  <span class="banner-tl-zone banner-tl-zone--dusk zone-dusk"></span>
+                </div>
+                <div class="banner-tl-elapsed" style="width:100%"></div>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:0%"></span>
+                <span class="banner-tl-tick banner-tl-tick--sr tick-sr"></span>
+                <span class="banner-tl-tick banner-tl-tick--ss tick-ss"></span>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:100%"></span>
+                <span class="banner-tl-marker banner-tl-marker--sun" style="display:none"></span>
+                <span class="banner-tl-marker banner-tl-marker--moon" style="left:0%"></span>
+              </div>
+            </div>
+            <div class="banner-tl-col banner-tl-col--right">
+              <span class="banner-tl-kicker">Legal end</span>
+              <span class="banner-tl-time">22:00</span>
+              <span class="banner-tl-hint">↓ Set <span>20:30</span></span>
+            </div>
+          </div>
+          <div class="banner-moon-row">
+            <div class="banner-moon-row-main">
+              <div class="banner-moon-phase">
+                <span style="font-size:22px" aria-hidden="true">🌒</span>
+                <div class="banner-moon-text">
+                  <div class="preview-moon-line">Waxing Crescent</div>
+                  <div class="preview-moon-sub">24% illuminated</div>
+                </div>
+              </div>
+            </div>
+            <div class="banner-forecast-link">View deer activity forecast ›</div>
+          </div>
+        </div>
+      </div>
+      <p class="preview-note">Moon marker on the bar (not the sun). Countdown is dim; timeline labels are muted; elapsed fill is the full red-tinted bar.</p>
+    </section>
+
+    <!-- 2: At legal start -->
+    <section class="preview-strip">
+      <h2>2 · At legal start</h2>
+      <div class="legal-banner legal" role="region" aria-label="Preview">
+        <div class="legal-banner-inner">
+          <div class="banner-clock-stack">
+            <div class="banner-status-row">
+              <span class="banner-status-dot" aria-hidden="true"></span>
+              <span class="status-label">Legal to Shoot</span>
+            </div>
+            <div class="banner-countdown-display countdown-green">18:00:00</div>
+            <div class="banner-countdown-hint">Remaining</div>
+          </div>
+          <div class="banner-timeline" role="img" aria-label="Timeline preview">
+            <div class="banner-tl-col banner-tl-col--left">
+              <span class="banner-tl-kicker">Legal start</span>
+              <span class="banner-tl-time">04:00</span>
+              <span class="banner-tl-hint">↑ Rise <span>05:30</span></span>
+            </div>
+            <div class="banner-tl-track-outer">
+              <div class="banner-tl-track">
+                <div class="banner-tl-zones" aria-hidden="true">
+                  <span class="banner-tl-zone banner-tl-zone--dawn zone-dawn"></span>
+                  <span class="banner-tl-zone banner-tl-zone--core zone-core"></span>
+                  <span class="banner-tl-zone banner-tl-zone--dusk zone-dusk"></span>
+                </div>
+                <div class="banner-tl-elapsed" style="width:0%"></div>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:0%"></span>
+                <span class="banner-tl-tick banner-tl-tick--sr tick-sr"></span>
+                <span class="banner-tl-tick banner-tl-tick--ss tick-ss"></span>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:100%"></span>
+                <span class="banner-tl-marker banner-tl-marker--sun" style="left:0%"></span>
+              </div>
+            </div>
+            <div class="banner-tl-col banner-tl-col--right">
+              <span class="banner-tl-kicker">Legal end</span>
+              <span class="banner-tl-time">22:00</span>
+              <span class="banner-tl-hint">↓ Set <span>20:30</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="preview-note">Sun and elapsed wedge sit on the left edge; dawn band only to the first orange tick (sunrise).</p>
+    </section>
+
+    <!-- 3: During day -->
+    <section class="preview-strip">
+      <h2>3 · During the day (core legal)</h2>
+      <div class="legal-banner legal" role="region" aria-label="Preview">
+        <div class="legal-banner-inner">
+          <div class="banner-clock-stack">
+            <div class="banner-status-row">
+              <span class="banner-status-dot" aria-hidden="true"></span>
+              <span class="status-label">Legal to Shoot</span>
+            </div>
+            <div class="banner-countdown-display countdown-green">09:00:00</div>
+            <div class="banner-countdown-hint">Remaining</div>
+          </div>
+          <div class="banner-timeline" role="img" aria-label="Timeline preview">
+            <div class="banner-tl-col banner-tl-col--left">
+              <span class="banner-tl-kicker">Legal start</span>
+              <span class="banner-tl-time">04:00</span>
+              <span class="banner-tl-hint">↑ Rise <span>05:30</span></span>
+            </div>
+            <div class="banner-tl-track-outer">
+              <div class="banner-tl-track">
+                <div class="banner-tl-zones" aria-hidden="true">
+                  <span class="banner-tl-zone banner-tl-zone--dawn zone-dawn"></span>
+                  <span class="banner-tl-zone banner-tl-zone--core zone-core"></span>
+                  <span class="banner-tl-zone banner-tl-zone--dusk zone-dusk"></span>
+                </div>
+                <div class="banner-tl-elapsed" style="width:50%"></div>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:0%"></span>
+                <span class="banner-tl-tick banner-tl-tick--sr tick-sr"></span>
+                <span class="banner-tl-tick banner-tl-tick--ss tick-ss"></span>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:100%"></span>
+                <span class="banner-tl-marker banner-tl-marker--sun" style="left:50%"></span>
+              </div>
+            </div>
+            <div class="banner-tl-col banner-tl-col--right">
+              <span class="banner-tl-kicker">Legal end</span>
+              <span class="banner-tl-time">22:00</span>
+              <span class="banner-tl-hint">↓ Set <span>20:30</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="preview-note">Green “legal” chrome; sun sits in the wide core band between sunrise and sunset ticks.</p>
+    </section>
+
+    <!-- 4: Twilight before legal end -->
+    <section class="preview-strip">
+      <h2>4 · Twilight (after sunset, still legal)</h2>
+      <div class="legal-banner twilight" role="region" aria-label="Preview">
+        <div class="legal-banner-inner">
+          <div class="banner-clock-stack">
+            <div class="banner-status-row">
+              <span class="banner-status-dot" aria-hidden="true"></span>
+              <span class="status-label">Legal to Shoot</span>
+            </div>
+            <div class="banner-countdown-display countdown-amber">01:00:00</div>
+            <div class="banner-countdown-hint">Remaining</div>
+          </div>
+          <div class="banner-timeline" role="img" aria-label="Timeline preview">
+            <div class="banner-tl-col banner-tl-col--left">
+              <span class="banner-tl-kicker">Legal start</span>
+              <span class="banner-tl-time">04:00</span>
+              <span class="banner-tl-hint">↑ Rise <span>05:30</span></span>
+            </div>
+            <div class="banner-tl-track-outer">
+              <div class="banner-tl-track">
+                <div class="banner-tl-zones" aria-hidden="true">
+                  <span class="banner-tl-zone banner-tl-zone--dawn zone-dawn"></span>
+                  <span class="banner-tl-zone banner-tl-zone--core zone-core"></span>
+                  <span class="banner-tl-zone banner-tl-zone--dusk zone-dusk"></span>
+                </div>
+                <div class="banner-tl-elapsed" style="width:94.44%"></div>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:0%"></span>
+                <span class="banner-tl-tick banner-tl-tick--sr tick-sr"></span>
+                <span class="banner-tl-tick banner-tl-tick--ss tick-ss"></span>
+                <span class="banner-tl-tick banner-tl-tick--edge" style="left:100%"></span>
+                <span class="banner-tl-marker banner-tl-marker--sun" style="left:94.44%"></span>
+              </div>
+            </div>
+            <div class="banner-tl-col banner-tl-col--right">
+              <span class="banner-tl-kicker">Legal end</span>
+              <span class="banner-tl-time">22:00</span>
+              <span class="banner-tl-hint">↓ Set <span>20:30</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="preview-note">Amber banner tint; stronger dusk band on the right; legal end column picks up gold emphasis. Sun near the end (e.g. 21:00). Countdown often amber when under one hour remains.</p>
+    </section>
+  </div>
+</body>
+</html>

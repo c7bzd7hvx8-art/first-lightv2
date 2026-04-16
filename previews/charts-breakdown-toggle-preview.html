@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview — Charts &amp; breakdowns toggle</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --moss: #5a7a30;
+    --moss-soft: rgba(90, 122, 48, 0.14);
+    --moss-border: rgba(90, 122, 48, 0.28);
+    --gold: #c8a84b;
+    --bark: #3a3530;
+    --muted: #8a8580;
+    --page: #ebe6dc;
+    --card-top: #fffefb;
+    --card-bot: #f4f1ea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 18px 16px 40px;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--page);
+    color: var(--bark);
+    max-width: 440px;
+    margin-inline: auto;
+  }
+  h1 {
+    font-size: 17px; font-weight: 700; margin: 0 0 6px;
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+  .intro {
+    font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 22px;
+  }
+  .opt {
+    margin-bottom: 26px;
+  }
+  .opt-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted); margin-bottom: 8px;
+    font-family: 'DM Mono', monospace;
+  }
+  /* Base toggle shell (matches diary stats-more-toggle roughly) */
+  .toggle {
+    width: 100%; display: flex; align-items: stretch; justify-content: space-between;
+    gap: 12px; padding: 12px 14px 12px 16px;
+    border: 1.5px solid var(--moss-border); border-radius: 14px;
+    background: linear-gradient(180deg, var(--card-top) 0%, var(--card-bot) 100%);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.85) inset, 0 2px 8px rgba(14,42,8,0.06);
+    text-align: left; cursor: default;
+  }
+  .toggle-l { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+  .toggle-t { font-size: 13px; font-weight: 700; color: var(--bark); }
+  .toggle-h { font-size: 9px; color: var(--muted); font-family: 'DM Mono', monospace; letter-spacing: 0.2px; line-height: 1.35; }
+  .toggle-cta { font-size: 10px; font-weight: 700; color: var(--moss); margin-top: 2px; }
+  .toggle-r { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 6px; }
+  .chev-wrap {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--moss-soft); border: 1px solid var(--moss-border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .chev { font-size: 18px; color: #3d5a28; font-weight: 700; line-height: 1; }
+
+  /* ── A: Micro histogram (vertical bars) ── */
+  .viz-a {
+    display: flex; align-items: flex-end; justify-content: flex-end;
+    gap: 3px; height: 44px; padding-top: 4px;
+  }
+  .viz-a span {
+    width: 5px; border-radius: 2px 2px 1px 1px;
+    background: linear-gradient(180deg, #7a9a4a 0%, var(--moss) 100%);
+    opacity: 0.85;
+  }
+  .viz-a span:nth-child(3n) { background: linear-gradient(180deg, #dfc06a 0%, var(--gold) 100%); opacity: 0.9; }
+
+  /* ── B: Sparkline + area (trend “feel”) ── */
+  .viz-b { width: 100px; height: 40px; flex-shrink: 0; }
+  .viz-b svg { display: block; width: 100%; height: 100%; }
+
+  /* ── C: Donut lockup + 3 bars ── */
+  .viz-c { display: flex; align-items: center; gap: 10px; height: 44px; }
+  .viz-c-donut {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: conic-gradient(var(--gold) 0 110deg, var(--moss) 110deg 220deg, #c0b8aa 220deg 360deg);
+    mask: radial-gradient(circle 52% at 50% 50%, transparent 98%, #000 100%);
+    -webkit-mask: radial-gradient(circle 52% at 50% 50%, transparent 98%, #000 100%);
+    flex-shrink: 0;
+  }
+  .viz-c-bars { display: flex; align-items: flex-end; gap: 4px; height: 36px; }
+  .viz-c-bars i { width: 6px; border-radius: 2px; background: var(--moss); opacity: 0.75; }
+  .viz-c-bars i:nth-child(2) { height: 70% !important; background: var(--gold); opacity: 0.85; }
+
+  /* ── D: Icon strip (month / pie / map hint) — decorative SVGs ── */
+  .viz-d { display: flex; align-items: center; gap: 8px; height: 40px; opacity: 0.92; }
+  .viz-d svg { width: 28px; height: 28px; flex-shrink: 0; }
+
+  /* ── E: “Live teaser” row — static sample numbers (in app: bind to season) ── */
+  .viz-e {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    justify-content: flex-end; max-width: 160px;
+  }
+  .viz-e-stat {
+    font-family: 'DM Mono', monospace; font-size: 9px; color: var(--muted);
+    line-height: 1.2; text-align: right;
+  }
+  .viz-e-stat strong { display: block; font-size: 13px; color: var(--bark); font-weight: 700; }
+  .viz-e-bars { display: flex; align-items: flex-end; gap: 2px; height: 32px; }
+  .viz-e-bars span { width: 4px; border-radius: 1px; background: var(--moss); opacity: 0.55; }
+  .viz-e-bars span:nth-child(4), .viz-e-bars span:nth-child(5) { background: var(--gold); opacity: 0.85; height: 78% !important; }
+
+  /* ── F: Wide histogram under title (full width second row) ── */
+  .toggle-f { flex-direction: column; align-items: stretch; gap: 10px; }
+  .toggle-f .row1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .viz-f {
+    display: flex; align-items: flex-end; gap: 4px; height: 36px;
+    padding: 4px 6px 0; margin: 0 -4px 0 -4px;
+    border-radius: 8px; background: rgba(90,122,48,0.06);
+  }
+  .viz-f span {
+    flex: 1; min-width: 0; max-width: 14px; margin: 0 auto;
+    border-radius: 3px 3px 1px 1px;
+    background: linear-gradient(180deg, rgba(122,154,74,0.9), var(--moss));
+  }
+  .viz-f span:nth-child(6), .viz-f span:nth-child(7) { background: linear-gradient(180deg, #dfc06a, var(--gold)); }
+</style>
+</head>
+<body>
+  <h1>Charts toggle — graphic options</h1>
+  <p class="intro">Static mock-ups using diary colours. Open this file in a browser. Pick a direction (or combine: e.g. <strong>A + E</strong> = bars + one real teaser stat).</p>
+
+  <div class="opt">
+    <div class="opt-label">A — Micro histogram (prominent “has data”)</div>
+    <div class="toggle">
+      <div class="toggle-l">
+        <span class="toggle-t">Charts &amp; breakdowns</span>
+        <span class="toggle-h">Monthly · species · sex · ground · more</span>
+        <span class="toggle-cta">Tap to show</span>
+      </div>
+      <div class="toggle-r">
+        <div class="viz-a" aria-hidden="true">
+          <span style="height:32%"></span><span style="height:55%"></span><span style="height:78%"></span><span style="height:40%"></span>
+          <span style="height:92%"></span><span style="height:48%"></span><span style="height:65%"></span><span style="height:38%"></span>
+          <span style="height:88%"></span><span style="height:52%"></span><span style="height:70%"></span>
+        </div>
+        <div class="chev-wrap"><span class="chev">▾</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-label">B — Sparkline strip (trend / season rhythm)</div>
+    <div class="toggle">
+      <div class="toggle-l">
+        <span class="toggle-t">Charts &amp; breakdowns</span>
+        <span class="toggle-h">Monthly · species · sex · ground · more</span>
+        <span class="toggle-cta">Tap to show</span>
+      </div>
+      <div class="toggle-r">
+        <div class="viz-b" aria-hidden="true">
+          <svg viewBox="0 0 100 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#5a7a30" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#5a7a30" stop-opacity="0.02"/>
+              </linearGradient>
+            </defs>
+            <path d="M0 32 L12 28 L24 30 L36 18 L48 22 L60 8 L72 14 L84 6 L100 12 V40 H0 Z" fill="url(#g)"/>
+            <path d="M0 32 L12 28 L24 30 L36 18 L48 22 L60 8 L72 14 L84 6 L100 12" stroke="#5a7a30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <circle cx="60" cy="8" r="3" fill="#c8a84b" stroke="#fff" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="chev-wrap"><span class="chev">▾</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-label">C — Donut + bars (mix / composition)</div>
+    <div class="toggle">
+      <div class="toggle-l">
+        <span class="toggle-t">Charts &amp; breakdowns</span>
+        <span class="toggle-h">Monthly · species · sex · ground · more</span>
+        <span class="toggle-cta">Tap to show</span>
+      </div>
+      <div class="toggle-r">
+        <div class="viz-c" aria-hidden="true">
+          <div class="viz-c-donut"></div>
+          <div class="viz-c-bars">
+            <i style="height:45%"></i><i style="height:88%"></i><i style="height:55%"></i><i style="height:70%"></i>
+          </div>
+        </div>
+        <div class="chev-wrap"><span class="chev">▾</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-label">D — Icon strip (lighter, still “analytics”)</div>
+    <div class="toggle">
+      <div class="toggle-l">
+        <span class="toggle-t">Charts &amp; breakdowns</span>
+        <span class="toggle-h">Monthly · species · sex · ground · more</span>
+        <span class="toggle-cta">Tap to show</span>
+      </div>
+      <div class="toggle-r">
+        <div class="viz-d" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="2" stroke="#5a7a30" stroke-width="1.4"/><path d="M3 9h18M8 2v4M16 2v4" stroke="#5a7a30" stroke-width="1.2"/><path d="M7 14h3v5H7zM11 12h3v7h-3zM15 16h3v3h-3z" fill="#5a7a30" opacity="0.85"/></svg>
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18" stroke="#c8a84b" stroke-width="1.4"/><path d="M5 10l7-5 7 5" stroke="#5a7a30" stroke-width="1.4" stroke-linecap="round"/><path d="M6 18h12" stroke="#5a7a30" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="#5a7a30" stroke-width="1.3"/><path d="M12 12l4-5" stroke="#c8a84b" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="chev-wrap"><span class="chev">▾</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-label">E — Teaser stat + bars (best if wired to real counts in app)</div>
+    <div class="toggle">
+      <div class="toggle-l">
+        <span class="toggle-t">Charts &amp; breakdowns</span>
+        <span class="toggle-h">Monthly · species · sex · ground · more</span>
+        <span class="toggle-cta">Tap to show</span>
+      </div>
+      <div class="toggle-r">
+        <div class="viz-e" aria-hidden="true">
+          <div class="viz-e-stat"><strong>4</strong>culls · 3 species</div>
+          <div class="viz-e-bars">
+            <span style="height:30%"></span><span style="height:45%"></span><span style="height:25%"></span>
+            <span style="height:60%"></span><span style="height:85%"></span><span style="height:40%"></span>
+          </div>
+        </div>
+        <div class="chev-wrap"><span class="chev">▾</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-label">F — Full-width bar band under copy (maximum “dashboard” weight)</div>
+    <div class="toggle toggle-f">
+      <div class="row1">
+        <div class="toggle-l">
+          <span class="toggle-t">Charts &amp; breakdowns</span>
+          <span class="toggle-h">Monthly · species · sex · ground · more</span>
+          <span class="toggle-cta">Tap to show</span>
+        </div>
+        <div class="chev-wrap"><span class="chev">▾</span></div>
+      </div>
+      <div class="viz-f" aria-hidden="true">
+        <span style="height:35%"></span><span style="height:50%"></span><span style="height:28%"></span><span style="height:62%"></span>
+        <span style="height:44%"></span><span style="height:88%"></span><span style="height:95%"></span><span style="height:40%"></span>
+        <span style="height:55%"></span><span style="height:33%"></span><span style="height:70%"></span><span style="height:48%"></span>
+      </div>
+    </div>
+  </div>
+
+  <p class="intro" style="margin-top:8px;font-size:11px;">Recommendation: <strong>A</strong> or <strong>F</strong> for “obvious charts inside”; add <strong>E</strong> once <code>buildStats</code> can pass season totals without extra cost.</p>
+</body>
+</html>

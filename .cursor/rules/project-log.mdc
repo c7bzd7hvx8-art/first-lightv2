@@ -1,0 +1,43 @@
+---
+description: Always read PROJECT-LOG.md before touching app/deploy files; always update it after — no silent edits
+alwaysApply: true
+---
+
+# Project log (`PROJECT-LOG.md`) — strict
+
+## 1. Read first (no exceptions)
+
+Before **any** edit, search, or plan that touches **tracked paths** (below), open **`PROJECT-LOG.md`** and read the **top few dated sections** (latest work first). Use it to avoid duplicating work, contradicting recent decisions, or re-breaking something already fixed.
+
+If the task is **only** “read / explain / answer” with **no** file edits, reading the log is **recommended** when the question involves diary, syndicates, Supabase, or recent features.
+
+## 2. Tracked paths — changes must be logged
+
+Any **write** to the following **must** produce an update to **`PROJECT-LOG.md`** in the **same session** (before you finish the turn), unless the user explicitly says **not** to log this once.
+
+| Area | Paths (repo root) |
+|------|---------------------|
+| Diary PWA | `diary.js`, `diary.html`, `diary.css` |
+| Main site | `app.js`, `index.html`, `styles.css` |
+| Service worker / cache | `sw.js` |
+| Deer School | `deerschool.js`, `deerschool.html`, `deerschool.css`, `questions.js` |
+| Other shipped HTML/CSS/JS | `privacy.html`, `diary-guide.html`, `manifest.json`, **`manifest-diary.json`** — and **any new** root `*.html` / `*.js` / `*.css` that users load |
+| Supabase / deploy | `scripts/**/*.sql`, new or changed SQL under `scripts/`, **`scripts/SUPABASE-RECORD.md`**, **`scripts/supabase-audit-rls-snapshot.json`** |
+| Shared assets | New/changed icons, critical **`vendor/`** bumps if behaviour or caching changes |
+
+**Standalone previews / design sandboxes** (e.g. `banner-ui-options-preview.html`, `legal-banner-preview.html`): log **if** you change behaviour, copy, or structure; pure exploratory tweaks can be omitted **only** if the user says they are throwaway.
+
+## 3. What to write (minimum)
+
+- **Same calendar day**, **same feature area**: you may **extend** the latest matching dated section with a **bullet** instead of a new heading.
+- **Otherwise**: add a new **`## YYYY-MM-DD — Short title`** section (prepend under the intro block is fine).
+- **Minimum content**: which files (backticks), one line on **what** changed; note **Supabase manual deploy** if SQL was added/changed.
+- **No** full chat transcripts — short summaries only.
+
+## 4. No “too small to log”
+
+There is **no** “tiny fix” exception for tracked paths: typo in `diary.js`, one-line `sw.js` bump, comment-only — still add **at least one bullet** (e.g. “`sw.js` — cache vX.Y”, “`diary.js` — copy tweak in export toast”). If you touched the file, the log gets a line.
+
+## 5. When the user opts out
+
+Only skip logging if the user **clearly** says not to record this change (e.g. “don’t log”, “scratch only”). Prefer confirming once if ambiguous.

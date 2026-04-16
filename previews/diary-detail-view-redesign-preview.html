@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cull Diary — Entry detail redesign (options preview)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --forest: #1a2e1a; --deep: #0e2a08; --moss: #5a7a30; --leaf: #7adf7a;
+      --gold: #c8a84b; --amber: #f0c870; --cream: #f2efe9; --stone: #ede9e2;
+      --bark: #3d2b1f; --muted: #a0988a; --red: #c62828; --blue: #1a4aaa;
+      --fallow-tint: #3a2208;
+      --phone-w: 390px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #0a0f08;
+      color: rgba(255,255,255,0.88);
+      padding: 24px 16px 80px;
+      line-height: 1.45;
+    }
+    .intro {
+      max-width: 720px;
+      margin: 0 auto 32px;
+      padding: 20px;
+      border-radius: 16px;
+      background: rgba(90,122,48,0.12);
+      border: 1px solid rgba(200,168,75,0.2);
+    }
+    .intro h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem;
+      color: var(--amber);
+      margin-bottom: 8px;
+    }
+    .intro p { font-size: 13px; color: rgba(255,255,255,0.65); margin-bottom: 10px; }
+    .intro ul { margin-left: 18px; font-size: 12px; color: rgba(255,255,255,0.55); }
+    .intro code { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--leaf); }
+
+    .options-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 48px;
+      align-items: center;
+    }
+
+    .opt-block {
+      width: 100%;
+      max-width: calc(var(--phone-w) + 48px);
+    }
+    .opt-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 10px;
+      padding-left: 4px;
+    }
+    .opt-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 4px;
+    }
+    .opt-desc {
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 14px;
+      max-width: 520px;
+    }
+
+    /* Phone chrome */
+    .phone {
+      width: var(--phone-w);
+      margin: 0 auto;
+      border-radius: 28px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+      background: var(--cream);
+      color: var(--bark);
+    }
+    .phone-scroll {
+      max-height: 880px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Shared atoms */
+    .ic { width: 16px; height: 16px; flex-shrink: 0; }
+    .ic-sm { width: 14px; height: 14px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: 'DM Mono', monospace;
+    }
+    .sync-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.45);
+      font-family: 'DM Mono', monospace;
+      margin-top: 8px;
+    }
+    .sync-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--leaf);
+      box-shadow: 0 0 8px rgba(122,223,122,0.5);
+    }
+
+    .wx-icons {
+      display: flex;
+      align-items: stretch;
+      background: #f0f4eb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .wx-cell {
+      flex: 1;
+      text-align: center;
+      padding: 10px 4px;
+      border-right: 1px solid rgba(90,122,48,0.1);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--bark);
+    }
+    .wx-cell:last-child { border-right: none; }
+    .wx-lbl {
+      font-size: 7px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      margin-top: 4px;
+    }
+    .wx-sub { font-size: 8px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.82) 100%),
+        linear-gradient(135deg, #4a3018 0%, var(--fallow-tint) 45%, #1a1008 100%);
+    }
+    .hero-back {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      z-index: 4;
+    }
+
+    /*──────── Option A — Editorial overlap card ────────*/
+    .a-hero {
+      position: relative;
+      height: 220px;
+      color: #fff;
+    }
+    .a-hero-bot {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 16px;
+      z-index: 3;
+    }
+    .a-title { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 700; }
+    .a-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .a-pink { background: rgba(136,14,79,0.35); color: #f8bbd9; border: 1px solid rgba(200,100,140,0.35); }
+    .a-loc { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.15); }
+    .a-wt { background: rgba(90,200,90,0.22); color: #c8f0c0; border: 1px solid rgba(122,223,122,0.35); }
+    .a-sheet {
+      margin-top: -28px;
+      position: relative;
+      z-index: 5;
+      background: var(--cream);
+      border-radius: 22px 22px 0 0;
+      padding: 20px 16px 16px;
+      box-shadow: 0 -8px 32px rgba(0,0,0,0.2);
+    }
+    .a-row {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+    .a-thumb {
+      width: 96px;
+      height: 96px;
+      border-radius: 14px;
+      flex-shrink: 0;
+      background: linear-gradient(145deg, #5c4a38, #2a1e14);
+      border: 2px solid rgba(200,168,75,0.35);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+    .a-facts { flex: 1; min-width: 0; }
+    .a-fact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+    }
+    .a-fact-grid--6 {
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px 6px;
+    }
+    .a-fact-grid--6 .a-fv { font-size: 13px; }
+    .a-fk {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+    }
+    .a-fv { font-size: 14px; font-weight: 700; color: var(--bark); margin-top: 2px; }
+    .a-loc-block {
+      padding: 12px;
+      background: white;
+      border-radius: 12px;
+      border: 1px solid var(--stone);
+      margin-bottom: 14px;
+    }
+    .a-loc-block .a-fk { margin-bottom: 4px; }
+    .a-loc-block .a-fv { font-size: 15px; font-weight: 600; }
+    .a-wx-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 0 2px;
+    }
+    .a-wx-t {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--moss);
+      font-family: 'DM Mono', monospace;
+    }
+    .a-badge {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(200,168,75,0.2);
+      color: #5a6a32;
+      border: 1px solid rgba(200,168,75,0.35);
+    }
+    .a-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .a-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      cursor: default;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .a-btn-e { background: #f0f6e8; color: var(--moss); }
+    .a-btn-x { background: #e8f0ff; color: var(--blue); }
+    .a-btn-d { background: #fde8e8; color: var(--red); }
+
+    /*──────── Option B — Metric ribbon + instrument panel ────────*/
+    .b-hero { position: relative; height: 160px; color: #fff; }
+    .b-hero-bot { position: absolute; bottom: 0; left: 0; right: 0; padding: 14px; z-index: 3; }
+    .b-title { font-family: 'Playfair Display', serif; font-size: 22px; }
+    .b-chips { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .b-ribbon-wrap {
+      background: white;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--stone);
+    }
+    .b-ribbon {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 0 14px;
+      scrollbar-width: none;
+    }
+    .b-ribbon::-webkit-scrollbar { display: none; }
+    .b-met {
+      flex: 0 0 auto;
+      min-width: 88px;
+      padding: 10px 12px;
+      background: var(--cream);
+      border-radius: 12px;
+      border: 1px solid var(--stone);
+      text-align: center;
+    }
+    .b-met .a-fk { font-size: 7px; }
+    .b-met .a-fv { font-size: 15px; }
+    .b-panel {
+      margin: 14px;
+      padding: 14px;
+      background: linear-gradient(180deg, #faf9f6 0%, #f0ebe3 100%);
+      border-radius: 16px;
+      border: 1px solid rgba(90,122,48,0.12);
+    }
+    .b-panel-h {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--moss);
+      font-family: 'DM Mono', monospace;
+      margin-bottom: 10px;
+    }
+    .b-loc { font-size: 14px; font-weight: 600; color: var(--bark); margin-bottom: 12px; }
+    .b-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--stone);
+    }
+    .b-primary {
+      padding: 12px 20px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--moss), var(--deep));
+      color: white;
+      font-weight: 700;
+      font-size: 13px;
+      border: none;
+    }
+    .b-sec { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .b-kv {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      align-items: flex-start;
+    }
+    .b-kv:last-child { border-bottom: none; }
+    .b-kk { color: var(--muted); font-weight: 600; flex-shrink: 0; }
+    .b-kvv { color: var(--bark); font-weight: 600; text-align: right; }
+    .b-notes { font-size: 12px; color: #555; line-height: 1.55; margin-top: 4px; }
+
+    .mock-dsec { margin-bottom: 14px; }
+    .mock-dsec:last-child { margin-bottom: 0; }
+    .mock-dsec-l {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--moss);
+      font-family: 'DM Mono', monospace;
+      margin-bottom: 6px;
+    }
+    .mock-dsec-t { font-size: 13px; color: #555; line-height: 1.6; }
+
+    /*──────── Option C — Timeline / sections ────────*/
+    .c-hero {
+      height: 140px;
+      position: relative;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 16px;
+    }
+    .c-title { font-family: 'Playfair Display', serif; font-size: 21px; }
+    .c-sub { font-size: 11px; opacity: 0.85; margin-top: 4px; }
+    .c-body { padding: 12px 0 16px; background: var(--cream); }
+    .c-sec {
+      margin: 0 12px 10px;
+      background: white;
+      border-radius: 14px;
+      border: 1px solid var(--stone);
+      overflow: hidden;
+    }
+    .c-sec-h {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--moss);
+      font-family: 'DM Mono', monospace;
+      background: rgba(90,122,48,0.06);
+    }
+    .c-sec-b { padding: 12px 14px; font-size: 13px; color: #555; }
+    .c-photo-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .c-thumb2 {
+      width: 72px;
+      height: 72px;
+      border-radius: 12px;
+      background: linear-gradient(145deg, #5c4a38, #2a1e14);
+      flex-shrink: 0;
+    }
+    .c-mini { font-size: 11px; color: var(--muted); }
+    .c-actions { display: flex; gap: 8px; padding: 0 12px 14px; }
+    .c-actions .a-btn { flex: 1; }
+
+    /*──────── Option D — Dense dashboard (no empty 3×2) ────────*/
+    .d-hero { position: relative; height: 200px; color: #fff; overflow: hidden; }
+    /* Hero photo for context (ship: `detail-hero` + img); lightbox stays on thumb only. */
+    .d-hero .hero-bg {
+      background:
+        linear-gradient(to bottom, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.84) 100%),
+        center/cover no-repeat url('https://images.unsplash.com/photo-1484406566174-9da000fda645?w=960&q=80&auto=format&fit=crop'),
+        linear-gradient(135deg, #4a3018 0%, var(--fallow-tint) 45%, #1a1008 100%);
+    }
+    .d-hero-bot { position: absolute; bottom: 0; left: 0; right: 0; padding: 16px; z-index: 3; }
+    .d-title { font-family: 'Playfair Display', serif; font-size: 25px; }
+    .d-dash {
+      padding: 14px;
+      background: var(--cream);
+    }
+    .d-card {
+      background: white;
+      border-radius: 14px;
+      border: 1px solid var(--stone);
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .d-card-t {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--moss);
+      font-family: 'DM Mono', monospace;
+      margin-bottom: 10px;
+    }
+    .d-kv { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--stone); }
+    .d-kv:last-child { border-bottom: none; }
+    .d-k { color: var(--muted); font-weight: 500; }
+    .d-v { font-weight: 700; color: var(--bark); }
+    .d-muted { color: var(--muted); font-style: italic; font-weight: 500; }
+    .d-grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .d-tile {
+      padding: 10px;
+      background: var(--cream);
+      border-radius: 10px;
+      text-align: center;
+    }
+    .d-tile .a-fk { font-size: 7px; }
+    .d-tile .a-fv { font-size: 16px; }
+    .d-wx { margin-top: 4px; }
+    .d-bar {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .d-bar button {
+      flex: 1;
+      padding: 11px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 12px;
+      border: none;
+    }
+    /* Photo row — same affordance as ship: thumb + “Tap to expand” + Edit entry (`open-photo-lb` on thumb). */
+    .d-photo-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .d-photo-l {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .d-photo-thumb {
+      width: 88px;
+      height: 88px;
+      border-radius: 12px;
+      overflow: hidden;
+      flex-shrink: 0;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      cursor: pointer;
+    }
+    .d-photo-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .d-photo-hint {
+      font-size: 10px;
+      color: #a0988a;
+    }
+    .d-photo-edit {
+      flex: 0 1 auto;
+      align-self: flex-start;
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(90, 122, 48, 0.45);
+      background: #f0f6e8;
+      color: var(--moss);
+      font-weight: 700;
+      font-size: 10px;
+      font-family: inherit;
+    }
+    .d-photo-edit .ic-sm {
+      width: 12px;
+      height: 12px;
+    }
+    .d-photo-edit:disabled {
+      opacity: 1;
+      cursor: default;
+    }
+
+    /*──────── Option E — Full-bleed minimal + mono data strip ────────*/
+    .e-root { background: #faf8f5; color: var(--bark); }
+    .e-hero {
+      position: relative;
+      height: 260px;
+      color: #fff;
+    }
+    .e-hero-bot {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 20px 16px 22px;
+      z-index: 3;
+    }
+    .e-kicker {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      opacity: 0.75;
+      margin-bottom: 6px;
+    }
+    .e-title { font-family: 'Playfair Display', serif; font-size: 28px; line-height: 1.1; }
+    .e-strip {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      padding: 12px 14px;
+      background: #1a2414;
+      color: rgba(255,255,255,0.88);
+      letter-spacing: 0.02em;
+      line-height: 1.6;
+    }
+    .e-strip span { color: var(--amber); }
+    .e-body { padding: 16px; }
+    .e-line {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid #e5e0d8;
+      font-size: 13px;
+    }
+    .e-line:last-of-type { border-bottom: none; }
+    .e-lbl { width: 100px; flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .e-val { flex: 1; font-weight: 600; }
+    .e-wx-box {
+      margin-top: 8px;
+      padding: 14px;
+      background: white;
+      border: 1px solid var(--stone);
+      border-radius: 12px;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--bark);
+    }
+    .e-wx-box .wx-sub { font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 6px; }
+    .e-float {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      gap: 0;
+      border-top: 1px solid var(--stone);
+      background: rgba(250,248,245,0.96);
+      backdrop-filter: blur(8px);
+    }
+    .e-float button {
+      flex: 1;
+      padding: 14px 8px;
+      border: none;
+      background: transparent;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--moss);
+      font-family: 'DM Mono', monospace;
+    }
+    .e-float button:nth-child(2) { border-left: 1px solid var(--stone); border-right: 1px solid var(--stone); color: var(--blue); }
+    .e-float button:last-child { color: var(--red); }
+
+    .fake-nav {
+      height: 52px;
+      background: #111a0b;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      font-size: 8px;
+      font-family: 'DM Mono', monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(255,255,255,0.3);
+    }
+    .fake-nav span.on { color: var(--leaf); }
+  </style>
+</head>
+<body>
+
+  <div class="intro">
+    <h1>Entry detail — redesign options</h1>
+    <p>Static previews only (no <code>diary.js</code> / <code>diary.css</code> changes). Each phone uses the <strong>same fully filled record</strong> — all <strong>7 form sections</strong> represented: species/title, sex &amp; age, date/time, <strong>location + ground</strong>, <strong>weights</strong> (gralloch / clean / larder), <strong>shot</strong> block, <strong>notes</strong>, plus shooter / destination / <strong>weather</strong>.</p>
+    <p style="font-size:12px;margin-bottom:0"><strong>Sample data:</strong> Fallow Doe · Yearling · Castle Acre · Woodland Block · .308 @ 153m · Heart/Lung · Client · Game dealer · weights 56/42/43 kg · weather OVC 7.8°C · 12 mph SE · 1005 hPa.</p>
+    <ul style="margin-top:12px">
+      <li><strong>A</strong> — Overlap sheet: hero chips + 3×2 metrics beside photo; stacked <strong>field blocks</strong> (shot → notes → shooter → destination); place + ground; weather strip.</li>
+      <li><strong>B</strong> — Short hero + full <strong>metric ribbon</strong> (all six weights/dist) + panel with <strong>KV rows</strong> for shot, notes, shooter, destination, ground, location, weather.</li>
+      <li><strong>C</strong> — One card per <strong>concern</strong> (photo, weights grid, shot, shooter, destination, ground, location, notes, weather) — matches long filled forms.</li>
+      <li><strong>D</strong> — <strong>Dashboard</strong> cards: when/where, weights tile row, shot &amp; field, notes, weather.</li>
+      <li><strong>E</strong> — <strong>Mono strip</strong> encodes the densest facts; then row list for every section including notes.</li>
+    </ul>
+  </div>
+
+  <div class="options-grid">
+
+    <!-- A -->
+    <div class="opt-block">
+      <div class="opt-label">Option A</div>
+      <div class="opt-title">Editorial overlap</div>
+      <p class="opt-desc">Rounded sheet overlaps the hero; facts beside thumbnail; single clear hierarchy. Good if you want less “form” and more “record card”.</p>
+      <div class="phone">
+        <div class="phone-scroll">
+          <div class="a-hero">
+            <div class="hero-bg"></div>
+            <div class="hero-back">←</div>
+            <div class="a-hero-bot">
+              <div class="a-title">Fallow Doe</div>
+              <div class="a-chips">
+                <span class="pill a-pink">♀ Doe · Yearling</span>
+                <span class="pill a-loc" style="display:inline-flex;align-items:center;gap:5px"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11z"/><circle cx="12" cy="10" r="2.2" fill="currentColor" stroke="none"/></svg>Castle Acre</span>
+                <span class="pill a-wt">56 kg gralloch</span>
+              </div>
+              <div class="sync-line"><span class="sync-dot"></span>Synced · 11 Apr, 01:33</div>
+            </div>
+          </div>
+          <div class="a-sheet">
+            <div class="a-row">
+              <div class="a-thumb" title="Thumbnail mock"></div>
+              <div class="a-facts">
+                <div class="a-fact-grid a-fact-grid--6">
+                  <div><div class="a-fk">Date</div><div class="a-fv">Sat 11 Apr</div></div>
+                  <div><div class="a-fk">Time</div><div class="a-fv">01:33</div></div>
+                  <div><div class="a-fk">Distance</div><div class="a-fv">153<span style="font-size:10px;font-weight:600;color:var(--muted)"> m</span></div></div>
+                  <div><div class="a-fk">Gralloch</div><div class="a-fv">56<span style="font-size:10px;font-weight:600;color:var(--muted)"> kg</span></div></div>
+                  <div><div class="a-fk">Clean</div><div class="a-fv">42<span style="font-size:10px;font-weight:600;color:var(--muted)"> kg</span></div></div>
+                  <div><div class="a-fk">Larder</div><div class="a-fv">43<span style="font-size:10px;font-weight:600;color:var(--muted)"> kg</span></div></div>
+                </div>
+                <button type="button" style="margin-top:10px;padding:8px 12px;border-radius:8px;border:1.5px solid #c8d8a8;background:#f0f6e8;color:var(--moss);font-size:11px;font-weight:700;width:100%">Edit entry</button>
+              </div>
+            </div>
+            <div class="a-loc-block">
+              <div class="a-fk">Place &amp; permission</div>
+              <div class="a-fv">Castle Acre</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:6px;font-weight:600">Ground: Woodland Block</div>
+            </div>
+            <div class="mock-dsec">
+              <div class="mock-dsec-l">Shot details</div>
+              <div class="mock-dsec-t">Calibre: .308 Win · 153m<br>Placement: Heart / Lung</div>
+            </div>
+            <div class="mock-dsec">
+              <div class="mock-dsec-l">Notes</div>
+              <div class="mock-dsec-t">Light SW wind, approached from the east along the hedge line. Deer on winter wheat — clean shot, dropped within 20m.</div>
+            </div>
+            <div class="mock-dsec">
+              <div class="mock-dsec-l">Shooter</div>
+              <div class="mock-dsec-t">Client</div>
+            </div>
+            <div class="mock-dsec">
+              <div class="mock-dsec-l">Carcass destination</div>
+              <div class="mock-dsec-t">Game dealer</div>
+            </div>
+            <div class="a-wx-hdr">
+              <span class="a-wx-t">Conditions at cull</span>
+              <span class="a-badge">Weather added</span>
+            </div>
+            <div class="wx-icons">
+              <div class="wx-cell"><div style="color:var(--moss);display:flex;justify-content:center"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h11a4 4 0 0 0 0-8 0h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg></div><div class="wx-sub">OVC</div><div>Overcast</div><div class="wx-lbl">Sky</div></div>
+              <div class="wx-cell">7.8°C<div class="wx-lbl">Temp</div></div>
+              <div class="wx-cell" style="font-size:10px">12 mph SE<div class="wx-lbl">Wind</div></div>
+              <div class="wx-cell" style="font-size:10px">1005 hPa<div class="wx-lbl">Pressure</div></div>
+            </div>
+            <div class="a-actions">
+              <button type="button" class="a-btn a-btn-e">Edit</button>
+              <button type="button" class="a-btn a-btn-x">PDF</button>
+              <button type="button" class="a-btn a-btn-d">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="fake-nav"><span class="on">Diary</span><span>Add</span><span>Stats</span></div>
+      </div>
+    </div>
+
+    <!-- B -->
+    <div class="opt-block">
+      <div class="opt-label">Option B</div>
+      <div class="opt-title">Ribbon + instrument</div>
+      <p class="opt-desc">Shorter hero; swipe-friendly metric chips; one “instrument” card for location + weather; primary = Edit, PDF/Delete secondary.</p>
+      <div class="phone">
+        <div class="phone-scroll">
+          <div class="b-hero">
+            <div class="hero-bg"></div>
+            <div class="hero-back">←</div>
+            <div class="b-hero-bot">
+              <div class="b-title">Fallow Doe</div>
+              <div class="b-chips">
+                <span class="pill a-pink">♀ Doe · Yearling</span>
+                <span class="pill a-loc" style="display:inline-flex;align-items:center;gap:5px"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11z"/><circle cx="12" cy="10" r="2.2" fill="currentColor" stroke="none"/></svg>Castle Acre</span>
+                <span class="pill a-wt">56 kg gralloch</span>
+              </div>
+              <div class="sync-line"><span class="sync-dot"></span>Synced · 11 Apr, 01:33</div>
+            </div>
+          </div>
+          <div class="b-ribbon-wrap">
+            <div class="b-ribbon">
+              <div class="b-met"><div class="a-fk">Date</div><div class="a-fv">11 Apr</div></div>
+              <div class="b-met"><div class="a-fk">Time</div><div class="a-fv">01:33</div></div>
+              <div class="b-met"><div class="a-fk">Distance</div><div class="a-fv">153m</div></div>
+              <div class="b-met"><div class="a-fk">Gralloch</div><div class="a-fv">56</div></div>
+              <div class="b-met"><div class="a-fk">Clean</div><div class="a-fv">42</div></div>
+              <div class="b-met"><div class="a-fk">Larder</div><div class="a-fv">43</div></div>
+            </div>
+          </div>
+          <div class="b-panel">
+            <div class="b-panel-h">Field record</div>
+            <div class="b-kv"><span class="b-kk">Location</span><span class="b-kvv">Castle Acre</span></div>
+            <div class="b-kv"><span class="b-kk">Ground</span><span class="b-kvv">Woodland Block</span></div>
+            <div class="b-kv"><span class="b-kk">Shot</span><span class="b-kvv">.308 · 153m · Heart/Lung</span></div>
+            <div class="b-kv"><span class="b-kk">Shooter</span><span class="b-kvv">Client</span></div>
+            <div class="b-kv"><span class="b-kk">Destination</span><span class="b-kvv">Game dealer</span></div>
+            <div class="b-kv" style="flex-direction:column;align-items:stretch;gap:4px"><span class="b-kk">Notes</span><span class="b-notes" style="text-align:left;font-weight:500">Light SW wind, approached from the east along the hedge line. Deer on winter wheat — clean shot.</span></div>
+            <div class="b-panel-h" style="margin-top:12px">Weather (01:33)</div>
+            <div class="wx-icons" style="border-radius:10px">
+              <div class="wx-cell"><div style="color:var(--moss);display:flex;justify-content:center"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h11a4 4 0 0 0 0-8 0h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg></div><div class="wx-sub">OVC</div><div>Overcast</div><div class="wx-lbl">Sky</div></div>
+              <div class="wx-cell">7.8°C<div class="wx-lbl">Temp</div></div>
+              <div class="wx-cell" style="font-size:10px">12 mph SE<div class="wx-lbl">Wind</div></div>
+              <div class="wx-cell" style="font-size:10px">1005 hPa<div class="wx-lbl">Pressure</div></div>
+            </div>
+            <div class="b-foot">
+              <button type="button" class="b-primary">Edit entry</button>
+              <span class="b-sec">PDF · Delete</span>
+            </div>
+          </div>
+        </div>
+        <div class="fake-nav"><span class="on">Diary</span><span>Add</span><span>Stats</span></div>
+      </div>
+    </div>
+
+    <!-- C -->
+    <div class="opt-block">
+      <div class="opt-label">Option C</div>
+      <div class="opt-title">Section cards</div>
+      <p class="opt-desc">Compact hero; body is stacked white cards — one per <strong>form section</strong> when data exists (photo, weights, shot, shooter, destination, ground, location, notes, weather).</p>
+      <div class="phone">
+        <div class="phone-scroll">
+          <div class="c-hero">
+            <div class="hero-bg"></div>
+            <div class="hero-back">←</div>
+            <div class="c-title">Fallow Doe</div>
+            <div class="c-sub">Yearling · Sat 11 Apr 01:33 · synced</div>
+            <div class="a-chips" style="margin-top:8px">
+              <span class="pill a-pink">♀ Doe</span>
+              <span class="pill a-loc" style="display:inline-flex;align-items:center;gap:4px"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11z"/><circle cx="12" cy="10" r="2.2" fill="currentColor" stroke="none"/></svg>Castle Acre</span>
+              <span class="pill a-wt">56 kg</span>
+            </div>
+            <div class="sync-line" style="margin-top:8px"><span class="sync-dot"></span>Synced · 11 Apr, 01:33</div>
+          </div>
+          <div class="c-body">
+            <div class="c-sec">
+              <div class="c-sec-h">Photo</div>
+              <div class="c-sec-b">
+                <div class="c-photo-row">
+                  <div class="c-thumb2"></div>
+                  <div>
+                    <div style="font-weight:700;margin-bottom:4px">Entry photo</div>
+                    <div class="c-mini">Tap to expand full size</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Weights</div>
+              <div class="c-sec-b" style="padding-top:8px">
+                <div class="wx-icons" style="border-radius:10px;background:white;border:1px solid var(--stone)">
+                  <div class="wx-cell">56<div class="wx-lbl">Gralloch kg</div></div>
+                  <div class="wx-cell">42<div class="wx-lbl">Clean kg</div></div>
+                  <div class="wx-cell">43<div class="wx-lbl">Larder kg</div></div>
+                </div>
+                <div class="d-kv" style="margin-top:10px"><span class="d-k">Distance</span><span class="d-v">153 m</span></div>
+              </div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Shot details</div>
+              <div class="c-sec-b">Calibre: .308 Win · 153m<br>Placement: Heart / Lung</div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Shooter</div>
+              <div class="c-sec-b">Client</div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Carcass destination</div>
+              <div class="c-sec-b">Game dealer</div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Ground</div>
+              <div class="c-sec-b">Woodland Block</div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Location</div>
+              <div class="c-sec-b">Castle Acre</div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Notes</div>
+              <div class="c-sec-b">Light SW wind, approached from the east along the hedge line. Deer on winter wheat — clean shot, dropped within 20m.</div>
+            </div>
+            <div class="c-sec">
+              <div class="c-sec-h">Conditions at cull <span class="a-badge" style="margin-left:auto;font-size:7px">Weather</span></div>
+              <div class="c-sec-b" style="padding-top:4px">
+                <div class="wx-icons" style="border-radius:10px">
+                  <div class="wx-cell"><div style="color:var(--moss);display:flex;justify-content:center"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h11a4 4 0 0 0 0-8 0h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg></div><div class="wx-sub">OVC</div><div>Overcast</div><div class="wx-lbl">Sky</div></div>
+                  <div class="wx-cell">7.8°C<div class="wx-lbl">Temp</div></div>
+                  <div class="wx-cell" style="font-size:10px">12 mph SE<div class="wx-lbl">Wind</div></div>
+                  <div class="wx-cell" style="font-size:10px">1005 hPa<div class="wx-lbl">Pressure</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="c-actions">
+              <button type="button" class="a-btn a-btn-e">Edit</button>
+              <button type="button" class="a-btn a-btn-x">PDF</button>
+              <button type="button" class="a-btn a-btn-d">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="fake-nav"><span class="on">Diary</span><span>Add</span><span>Stats</span></div>
+      </div>
+    </div>
+
+    <!-- D -->
+    <div class="opt-block">
+      <div class="opt-label">Option D</div>
+      <div class="opt-title">Dense dashboard</div>
+      <p class="opt-desc"><strong>Hero</strong> = entry photo + dark scrim (like the live diary header). <strong>Photo</strong> card = square thumb + “Tap to expand” + <strong>Edit entry</strong> — ship opens full size from the thumb only (<code>open-photo-lb</code>). Then cards: <strong>when/where</strong>, <strong>weights + distance</strong>, <strong>shot &amp; stalking</strong>, <strong>notes</strong>, <strong>weather</strong>.</p>
+      <div class="phone">
+        <div class="phone-scroll">
+          <div class="d-hero">
+            <div class="hero-bg"></div>
+            <div class="hero-back">←</div>
+            <div class="d-hero-bot">
+              <div class="d-title">Fallow Doe</div>
+              <div class="a-chips" style="margin-top:8px">
+                <span class="pill a-pink">♀ Doe · Yearling</span>
+                <span class="pill a-loc" style="display:inline-flex;align-items:center;gap:4px"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11z"/><circle cx="12" cy="10" r="2.2" fill="currentColor" stroke="none"/></svg>Castle Acre</span>
+                <span class="pill a-wt">56 kg gralloch</span>
+              </div>
+              <div class="sync-line"><span class="sync-dot"></span>Synced · 11 Apr, 01:33</div>
+            </div>
+          </div>
+          <div class="d-dash">
+            <div class="d-card">
+              <div class="d-card-t">Photo</div>
+              <div class="d-photo-row">
+                <div class="d-photo-l">
+                  <div class="d-photo-thumb" title="Tap to view full size">
+                    <img src="https://images.unsplash.com/photo-1484406566174-9da000fda645?w=200&amp;h=200&amp;fit=crop&amp;q=80" width="88" height="88" alt="Cull photo mock">
+                  </div>
+                  <span class="d-photo-hint">Tap to expand</span>
+                </div>
+                <button type="button" class="d-photo-edit" disabled aria-label="Edit entry (disabled in preview)">
+                  <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                  Edit entry
+                </button>
+              </div>
+            </div>
+            <div class="d-card">
+              <div class="d-card-t">When &amp; where</div>
+              <div class="d-kv"><span class="d-k">Date</span><span class="d-v">Sat 11 Apr 2026</span></div>
+              <div class="d-kv"><span class="d-k">Time</span><span class="d-v">01:33</span></div>
+              <div class="d-kv"><span class="d-k">Location</span><span class="d-v">Castle Acre</span></div>
+              <div class="d-kv"><span class="d-k">Ground</span><span class="d-v">Woodland Block</span></div>
+            </div>
+            <div class="d-card">
+              <div class="d-card-t">Weights &amp; distance</div>
+              <div class="d-grid2">
+                <div class="d-tile"><div class="a-fk">Gralloch</div><div class="a-fv">56 kg</div></div>
+                <div class="d-tile"><div class="a-fk">Clean</div><div class="a-fv">42 kg</div></div>
+                <div class="d-tile"><div class="a-fk">Larder</div><div class="a-fv">43 kg</div></div>
+                <div class="d-tile"><div class="a-fk">Distance</div><div class="a-fv">153 m</div></div>
+              </div>
+            </div>
+            <div class="d-card">
+              <div class="d-card-t">Shot &amp; stalking</div>
+              <div class="d-kv"><span class="d-k">Calibre / range</span><span class="d-v">.308 Win · 153m</span></div>
+              <div class="d-kv"><span class="d-k">Placement</span><span class="d-v">Heart / Lung</span></div>
+              <div class="d-kv"><span class="d-k">Shooter</span><span class="d-v">Client</span></div>
+              <div class="d-kv"><span class="d-k">Destination</span><span class="d-v">Game dealer</span></div>
+            </div>
+            <div class="d-card">
+              <div class="d-card-t">Notes</div>
+              <p style="font-size:13px;color:#555;line-height:1.55;margin:0">Light SW wind, approached from the east along the hedge line. Deer on winter wheat — clean shot, dropped within 20m.</p>
+            </div>
+            <div class="d-card d-wx">
+              <div class="d-card-t">Conditions at time of cull</div>
+              <div class="wx-icons" style="border-radius:10px">
+                <div class="wx-cell"><div style="color:var(--moss);display:flex;justify-content:center"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h11a4 4 0 0 0 0-8 0h-.5A5.5 5.5 0 0 0 7 11a4 4 0 0 0 0 7z"/></svg></div><div class="wx-sub">OVC</div><div>Overcast</div><div class="wx-lbl">Sky</div></div>
+                <div class="wx-cell">7.8°C<div class="wx-lbl">Temp</div></div>
+                <div class="wx-cell" style="font-size:10px">12 mph SE<div class="wx-lbl">Wind</div></div>
+                <div class="wx-cell" style="font-size:10px">1005 hPa<div class="wx-lbl">Pressure</div></div>
+              </div>
+            </div>
+            <div class="d-bar">
+              <button style="background:#f0f6e8;color:var(--moss)">Edit</button>
+              <button style="background:#e8f0ff;color:var(--blue)">PDF</button>
+              <button style="background:#fde8e8;color:var(--red)">Delete</button>
+            </div>
+          </div>
+        </div>
+        <div class="fake-nav"><span class="on">Diary</span><span>Add</span><span>Stats</span></div>
+      </div>
+    </div>
+
+    <!-- E -->
+    <div class="opt-block">
+      <div class="opt-label">Option E</div>
+      <div class="opt-title">Minimal mono strip</div>
+      <p class="opt-desc">Strong typographic hero; one machine-readable strip; body is simple rows. Actions as a slim sticky bar (icons optional in ship).</p>
+      <div class="phone e-root">
+        <div class="phone-scroll">
+          <div class="e-hero">
+            <div class="hero-bg"></div>
+            <div class="hero-back">←</div>
+            <div class="e-hero-bot">
+              <div class="e-kicker">Cull record</div>
+              <div class="e-title">Fallow Doe</div>
+              <div class="a-chips" style="margin-top:10px">
+                <span class="pill a-pink">♀ Doe · Yearling</span>
+                <span class="pill a-loc" style="display:inline-flex;align-items:center;gap:4px"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11z"/><circle cx="12" cy="10" r="2.2" fill="currentColor" stroke="none"/></svg>Castle Acre</span>
+                <span class="pill a-wt">56 kg gralloch</span>
+              </div>
+            </div>
+          </div>
+          <div class="e-strip">
+            SYNCED <span>·</span> 11 APR <span>·</span> 0133 <span>·</span> DIST 153M <span>·</span> G/C/L 56/42/43 <span>·</span> .308 <span>·</span> CLIENT <span>·</span> DEALER
+          </div>
+          <div class="e-body">
+            <div class="e-line"><span class="e-lbl">Species</span><span class="e-val">Fallow · Doe · Yearling</span></div>
+            <div class="e-line"><span class="e-lbl">Date / time</span><span class="e-val">Sat 11 Apr 2026 · 01:33</span></div>
+            <div class="e-line"><span class="e-lbl">Location</span><span class="e-val">Castle Acre</span></div>
+            <div class="e-line"><span class="e-lbl">Ground</span><span class="e-val">Woodland Block</span></div>
+            <div class="e-line"><span class="e-lbl">Weights</span><span class="e-val">Gralloch 56 kg · Clean 42 kg · Larder 43 kg</span></div>
+            <div class="e-line"><span class="e-lbl">Distance</span><span class="e-val">153 m</span></div>
+            <div class="e-line"><span class="e-lbl">Shot</span><span class="e-val">.308 Win · Heart/Lung</span></div>
+            <div class="e-line"><span class="e-lbl">Shooter</span><span class="e-val">Client</span></div>
+            <div class="e-line"><span class="e-lbl">Destination</span><span class="e-val">Game dealer</span></div>
+            <div class="e-line"><span class="e-lbl">Notes</span><span class="e-val">Light SW wind, east hedge approach. Winter wheat. Clean shot ~20m.</span></div>
+            <div class="e-line"><span class="e-lbl">Photo</span><span class="e-val">Attached — tap hero to expand</span></div>
+            <div class="e-wx-box">
+              WX <span style="color:var(--moss)">OVC</span> OVERCAST · 7.8°C · 12 mph SE · 1005 hPa
+              <div class="wx-sub">Open-Meteo snapshot at cull time (01:33)</div>
+            </div>
+          </div>
+          <div class="e-float">
+            <button type="button">Edit</button>
+            <button type="button">PDF</button>
+            <button type="button">Delete</button>
+          </div>
+        </div>
+        <div class="fake-nav"><span class="on">Diary</span><span>Add</span><span>Stats</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <p style="text-align:center;font-size:11px;color:rgba(255,255,255,0.35);max-width:520px;margin:32px auto 0;font-family:'DM Mono',monospace;">
+    Pick a direction (or mix: e.g. B ribbon + D KV list). Say which letter(s) to ship and we wire it into <code>openDetail()</code> + <code>diary.css</code>.
+  </p>
+
+</body>
+</html>

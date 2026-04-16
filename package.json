@@ -1,0 +1,8 @@
+{
+  "name": "first-light",
+  "private": true,
+  "description": "First Light — deer diary / syndicate PWA. Static-site project; this package.json exists only to run the zero-dependency test suite.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}

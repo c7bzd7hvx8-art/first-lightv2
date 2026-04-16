@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diary Stats Bold Preview V2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500;700&family=DM+Sans:wght@400;500;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#f2f2ee;
+      --card:#fff;
+      --ink:#131910;
+      --muted:#6f7669;
+      --moss:#476e2d;
+      --deep:#102a0d;
+      --gold:#c8a84b;
+      --line:#e3e2d9;
+      --rad:18px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:"DM Sans",sans-serif;color:var(--ink)}
+    .phone{width:min(100%,430px);margin:0 auto;min-height:100vh;padding-bottom:90px}
+    .hdr{
+      background:
+        radial-gradient(120% 160% at 14% 0%,rgba(90,122,48,.38),rgba(15,31,9,0) 45%),
+        linear-gradient(165deg,#091706,#061106);
+      color:#fff;padding:56px 16px 20px
+    }
+    .tiny{font:700 11px "DM Mono",monospace;color:#c7b16b;text-transform:uppercase;letter-spacing:.08em}
+    h1{margin:10px 0 0;font:700 42px/1 "Playfair Display",serif}
+    .meta{margin-top:8px;font:700 10px "DM Mono",monospace;color:#cfbe85;letter-spacing:.08em;text-transform:uppercase}
+    .season{margin-top:14px;display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;background:rgba(16,42,13,.62);border:1px solid rgba(200,168,75,.45);color:#efd88f;font-weight:800}
+    .sect{padding:12px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--rad)}
+
+    .map-head{padding:14px}
+    .map-top{display:flex;justify-content:space-between;align-items:start;gap:8px}
+    .h2{font-size:28px;line-height:1;font-weight:800;letter-spacing:-.02em}
+    .cap{margin-top:5px;color:var(--muted);font:500 10px "DM Mono",monospace}
+    .control{display:flex;gap:6px}
+    .pill{padding:7px 12px;border-radius:999px;border:1px solid #d8d7cd;background:#fff;color:#42513a;font-size:12px;font-weight:700}
+    .pill.on{background:var(--deep);color:#fff;border-color:var(--deep)}
+    .sp{display:flex;gap:6px;overflow:auto;padding:0 14px 10px}
+    .sp .pill{white-space:nowrap}
+    .map{margin:0 14px;height:156px;border-radius:12px;border:1px solid #d5d3c8;background:linear-gradient(120deg,#7f9971,#5e7d54);position:relative;overflow:hidden}
+    .map:before,.map:after{content:"";position:absolute;border-radius:999px;background:rgba(255,255,255,.16)}
+    .map:before{width:260px;height:120px;right:-30px;top:12px}
+    .map:after{width:170px;height:74px;left:14px;bottom:14px}
+    .pin{position:absolute;left:52%;top:50%;width:18px;height:18px;border-radius:50%;background:var(--gold);border:3px solid #fff;box-shadow:0 4px 10px rgba(0,0,0,.34)}
+    .triple{display:grid;grid-template-columns:repeat(3,1fr);margin-top:10px;border-top:1px solid var(--line)}
+    .tr{padding:9px 6px;text-align:center;border-right:1px solid var(--line)}
+    .tr:last-child{border-right:none}
+    .trv{font:800 28px/1 "DM Sans",sans-serif}
+    .trl{margin-top:3px;color:var(--muted);font:700 9px "DM Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+
+    .kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .k{padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px}
+    .kl{font:700 9px "DM Mono",monospace;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+    .kv{margin-top:8px;font:800 38px/1 "DM Sans",sans-serif;letter-spacing:-.04em}
+    .ks{margin-top:7px;color:#7a8073;font-size:12px}
+
+    .charts{padding:12px}
+    .charts .card{padding:14px}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .ct{font-size:26px;font-weight:800;letter-spacing:-.02em}
+    .cd{margin-top:5px;color:var(--muted);font-size:12px}
+    .hist{display:flex;gap:4px;align-items:flex-end;height:34px}
+    .hist span{display:block;width:6px;border-radius:3px;background:#6b8f4b}
+    .hist span:nth-child(even){background:#d1b55f}
+    .hist span:nth-child(1){height:55%}.hist span:nth-child(2){height:85%}.hist span:nth-child(3){height:68%}
+    .hist span:nth-child(4){height:100%}.hist span:nth-child(5){height:60%}.hist span:nth-child(6){height:82%}
+    .hint{margin-top:8px;color:var(--moss);font-weight:700}
+
+    details{margin-top:10px}
+    summary{list-style:none;cursor:pointer}
+    summary::-webkit-details-marker{display:none}
+    .sum{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px}
+    .sum-title{font-size:24px;font-weight:800;letter-spacing:-.02em}
+    .sum-sub{font-size:12px;color:var(--muted)}
+    .sum-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .view{font-weight:700;color:var(--moss)}
+    .detail{margin-top:8px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px 12px}
+    .d{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #efeee7}
+    .d:last-child{border-bottom:none}
+    .d .l{font-weight:700}
+
+    .exports{padding:12px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .btn{border:1px solid #d8d6cb;border-radius:12px;padding:12px;text-align:center;font-weight:700;background:#fff}
+    .btn.csv{background:#edf6eb;color:#2c7a40}
+    .btn.pdf{background:#edf0fb;color:#2853b2}
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <header class="hdr">
+      <div class="tiny">← Diary · First Light</div>
+      <h1>Season Statistics</h1>
+      <div class="meta">2025-2026 · Aug 2025 – Jul 2026</div>
+      <div class="season">2025–2026 Season</div>
+    </header>
+
+    <section class="sect">
+      <article class="card">
+        <div class="map-head">
+          <div class="map-top">
+            <div>
+              <div class="h2">Cull Map</div>
+              <div class="cap">Location history · filter applies to all stats</div>
+            </div>
+            <div class="control">
+              <button class="pill">Map</button>
+              <button class="pill on">Satellite</button>
+            </div>
+          </div>
+        </div>
+        <div class="sp">
+          <button class="pill on">All</button><button class="pill">Red</button><button class="pill">Roe</button><button class="pill">Fallow</button>
+          <button class="pill">Muntjac</button><button class="pill">Sika</button><button class="pill">CWD</button>
+        </div>
+        <div class="map"><div class="pin"></div></div>
+        <div class="triple">
+          <div class="tr"><div class="trv">1</div><div class="trl">Pinned</div></div>
+          <div class="tr"><div class="trv">0</div><div class="trl">No GPS</div></div>
+          <div class="tr"><div class="trv">1</div><div class="trl">Species</div></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="sect">
+      <div class="kpi">
+        <article class="k"><div class="kl">Total cull</div><div class="kv">1</div><div class="ks">animals this season</div></article>
+        <article class="k"><div class="kl">Total weight</div><div class="kv">87</div><div class="ks">kg</div></article>
+        <article class="k"><div class="kl">Avg weight</div><div class="kv">87</div><div class="ks">kg per animal</div></article>
+        <article class="k"><div class="kl">Heaviest</div><div class="kv">87</div><div class="ks">kg · Red Deer</div></article>
+      </div>
+    </section>
+
+    <section class="charts">
+      <article class="card">
+        <div class="row">
+          <div>
+            <div class="ct">Charts &amp; breakdowns</div>
+            <div class="cd">Monthly · species · sex · ground · trends</div>
+          </div>
+          <div class="hist" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        </div>
+        <div class="hint">Tap to show</div>
+      </article>
+    </section>
+
+    <section class="sect">
+      <details open>
+        <summary class="sum">
+          <div class="sum-row"><div class="sum-title">Season Plan</div><div class="view">View details</div></div>
+          <div class="sum-sub">1 / 12 complete · 6 species</div>
+        </summary>
+        <div class="detail">
+          <div class="d"><span class="l">Red Deer</span><span>1 / 2</span></div>
+          <div class="d"><span class="l">Roe Deer</span><span>0 / 2</span></div>
+          <div class="d"><span class="l">Fallow</span><span>0 / 2</span></div>
+        </div>
+      </details>
+
+      <details>
+        <summary class="sum">
+          <div class="sum-row"><div class="sum-title">Syndicates</div><div class="view">View details</div></div>
+          <div class="sum-sub">2 groups · 0 / 35 complete</div>
+        </summary>
+        <div class="detail">
+          <div class="d"><span class="l">West Acre</span><span>0 / 19</span></div>
+          <div class="d"><span class="l">Castle Acre</span><span>0 / 16</span></div>
+        </div>
+      </details>
+    </section>
+
+    <section class="exports">
+      <div class="grid">
+        <button class="btn csv">CSV</button>
+        <button class="btn pdf">PDF</button>
+        <button class="btn">Summary</button>
+        <button class="btn">Larder Book</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

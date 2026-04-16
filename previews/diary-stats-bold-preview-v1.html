@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diary Stats Bold Preview V1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500;700&family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#f5f4ef;
+      --card:#ffffff;
+      --ink:#1e2419;
+      --muted:#6d7463;
+      --moss:#486c2c;
+      --deep:#17330f;
+      --gold:#c8a84b;
+      --line:#e7e5dd;
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:"DM Sans",system-ui,sans-serif;color:var(--ink)}
+    .phone{
+      width:min(100%,430px);
+      margin:0 auto;
+      background:var(--bg);
+      min-height:100vh;
+      padding-bottom:84px;
+    }
+    .hdr{
+      background:linear-gradient(160deg,#0d2009,#0a1606);
+      color:#fff;
+      padding:52px 16px 18px;
+    }
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .back{font:700 12px "DM Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:#d2bd74}
+    .brand{font:700 11px "DM Mono",monospace;color:#bda557}
+    h1{margin:0;font:700 46px/1 "Playfair Display",serif;letter-spacing:-.01em}
+    .sub{margin-top:8px;color:#d0c48a;font:700 11px "DM Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+    .season{
+      margin-top:14px;
+      display:inline-flex;
+      align-items:center;
+      border:1px solid rgba(200,168,75,.45);
+      color:#f0da8f;
+      border-radius:999px;
+      padding:9px 12px;
+      font:700 13px "DM Sans",sans-serif;
+    }
+
+    .section{padding:12px 12px 0}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
+    .map-card .head{display:flex;justify-content:space-between;align-items:center;padding:12px}
+    .title{font-size:22px;font-weight:800;letter-spacing:-.01em}
+    .cap{margin-top:4px;color:var(--muted);font:500 10px "DM Mono",monospace;letter-spacing:.04em}
+    .tog{display:flex;gap:6px}
+    .chip{
+      border:1px solid #d8d6cd;border-radius:999px;padding:6px 10px;background:#fff;
+      font-size:12px;font-weight:700;color:#45503d
+    }
+    .chip.on{background:var(--deep);border-color:var(--deep);color:#fff}
+    .filter{display:flex;gap:6px;overflow:auto;padding:0 12px 10px}
+    .filter .chip{white-space:nowrap;padding:7px 12px}
+    .map{
+      height:174px;margin:0 12px;border-radius:12px;
+      background:
+      linear-gradient(135deg,rgba(0,0,0,.18),rgba(0,0,0,.03)),
+      radial-gradient(circle at 26% 60%,#97ac88 0 22%,#728c62 22% 35%,#5e7853 35% 100%);
+      border:1px solid #d7d6cc;
+      position:relative;overflow:hidden;
+    }
+    .pin{position:absolute;left:48%;top:45%;width:20px;height:20px;border-radius:50%;border:3px solid #fff;background:var(--gold);box-shadow:0 5px 12px rgba(0,0,0,.35)}
+    .stats3{display:grid;grid-template-columns:repeat(3,1fr);margin-top:10px;border-top:1px solid var(--line)}
+    .s3{padding:10px 6px;text-align:center;border-right:1px solid var(--line)}
+    .s3:last-child{border-right:none}
+    .s3v{font:800 30px/1 "DM Sans",sans-serif}
+    .s3l{margin-top:4px;color:var(--muted);font:600 9px "DM Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+
+    .kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .k{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px}
+    .k .l{font:700 9px "DM Mono",monospace;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+    .k .v{margin-top:6px;font:800 36px/1 "DM Sans",sans-serif;letter-spacing:-.03em}
+    .k .s{margin-top:6px;color:#7f8577;font-size:12px}
+
+    .charts{padding:12px}
+    .charts-h{
+      display:flex;justify-content:space-between;align-items:center;
+      border:1px solid #d7d5ca;border-radius:14px;padding:12px;background:#fcfbf7
+    }
+    .charts-h .t{font-size:30px;font-weight:800;letter-spacing:-.02em}
+    .charts-h .d{font-size:12px;color:var(--muted)}
+    .bars{display:flex;gap:4px;align-items:flex-end;height:30px}
+    .bars span{display:block;width:6px;background:#6f9048;border-radius:3px}
+    .bars span:nth-child(3n){background:#d0b45f}
+    .bars span:nth-child(1){height:44%}.bars span:nth-child(2){height:82%}.bars span:nth-child(3){height:54%}
+    .bars span:nth-child(4){height:100%}.bars span:nth-child(5){height:68%}.bars span:nth-child(6){height:84%}
+
+    details{margin-top:10px}
+    details>summary{
+      list-style:none;cursor:pointer;background:#fff;border:1px solid var(--line);
+      border-radius:14px;padding:12px 14px;font-weight:700
+    }
+    details>summary::-webkit-details-marker{display:none}
+    .summary-row{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .summary-sub{font-size:12px;color:var(--muted);font-weight:500}
+    .fold{margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}
+    .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0eee8}
+    .row:last-child{border-bottom:none}
+    .label{font-weight:700}
+    .muted{color:var(--muted)}
+
+    .actions{padding:12px}
+    .act{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .btn{
+      border:1px solid #d9d6cb;background:#fff;border-radius:12px;padding:12px;text-align:center;
+      font-weight:700;color:#33452a
+    }
+    .btn.blue{background:#ecf1ff;color:#2f56b3}
+    .btn.green{background:#edf6eb;color:#2d7c3e}
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <header class="hdr">
+      <div class="top">
+        <div class="back">← Diary</div>
+        <div class="brand">First Light</div>
+      </div>
+      <h1>Season Statistics</h1>
+      <div class="sub">2025-2026 · Aug 2025 – Jul 2026</div>
+      <div class="season">2025–2026 Season</div>
+    </header>
+
+    <section class="section">
+      <article class="card map-card">
+        <div class="head">
+          <div>
+            <div class="title">Cull Map</div>
+            <div class="cap">Location history · 2025-26</div>
+          </div>
+          <div class="tog">
+            <button class="chip">Map</button>
+            <button class="chip on">Satellite</button>
+          </div>
+        </div>
+        <div class="filter">
+          <button class="chip on">All</button><button class="chip">Red</button><button class="chip">Roe</button><button class="chip">Fallow</button>
+          <button class="chip">Muntjac</button><button class="chip">Sika</button><button class="chip">CWD</button>
+        </div>
+        <div class="map"><div class="pin"></div></div>
+        <div class="stats3">
+          <div class="s3"><div class="s3v">1</div><div class="s3l">Pinned</div></div>
+          <div class="s3"><div class="s3v">0</div><div class="s3l">No GPS</div></div>
+          <div class="s3"><div class="s3v">1</div><div class="s3l">Species</div></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <div class="kpi">
+        <article class="k"><div class="l">Total cull</div><div class="v">1</div><div class="s">animals this season</div></article>
+        <article class="k"><div class="l">Total weight</div><div class="v">87</div><div class="s">kg</div></article>
+        <article class="k"><div class="l">Avg weight</div><div class="v">87</div><div class="s">kg per animal</div></article>
+        <article class="k"><div class="l">Heaviest</div><div class="v">87</div><div class="s">kg · Red Deer</div></article>
+      </div>
+    </section>
+
+    <section class="charts">
+      <div class="charts-h">
+        <div>
+          <div class="t">Charts &amp; breakdowns</div>
+          <div class="d">Monthly · species · sex · ground</div>
+        </div>
+        <div class="bars" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <details open>
+        <summary>
+          <div class="summary-row">
+            <div>
+              Season Plan
+              <div class="summary-sub">1 / 12 done · 6 species tracked</div>
+            </div>
+            <div class="muted">View details</div>
+          </div>
+        </summary>
+        <div class="fold">
+          <div class="row"><span class="label">Red Deer</span><span>1 / 2</span></div>
+          <div class="row"><span class="label">Roe Deer</span><span>0 / 2</span></div>
+          <div class="row"><span class="label">Fallow</span><span>0 / 2</span></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <div class="summary-row">
+            <div>
+              Syndicates
+              <div class="summary-sub">2 syndicates · 0 / 35 total complete</div>
+            </div>
+            <div class="muted">View details</div>
+          </div>
+        </summary>
+        <div class="fold">
+          <div class="row"><span class="label">West Acre</span><span>0 / 19</span></div>
+          <div class="row"><span class="label">Castle Acre</span><span>0 / 16</span></div>
+        </div>
+      </details>
+    </section>
+
+    <section class="actions">
+      <div class="act">
+        <button class="btn green">CSV</button>
+        <button class="btn blue">PDF</button>
+        <button class="btn">Summary</button>
+        <button class="btn">Larder Book</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "description": "RLS inventory: pg_class (public tables), pg_policies for public + storage.objects.",
+    "captured": "2026-04-12",
+    "storage_policies_verified": "live pg_policies (query 3 in supabase-rls-audit-queries.sql)",
+    "review": "Includes syndicate_anonymous_culls SELECT for active members/managers (scripts/syndicate-anonymous-retention.sql). Diary + other syndicate tables as before. Storage cull-photos: authenticated own-folder policies; private bucket + signed URLs (scripts/cull-photos-private-storage.sql)."
+  },
+  "rls_enabled_by_table": [
+    { "table_name": "cull_entries", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "cull_targets", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "ground_targets", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "grounds", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "syndicate_anonymous_culls", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "syndicate_invites", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "syndicate_member_allocations", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "syndicate_members", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "syndicate_targets", "rls_enabled": true, "rls_forced": false },
+    { "table_name": "syndicates", "rls_enabled": true, "rls_forced": false }
+  ],
+  "public_policies": [
+    { "schemaname": "public", "tablename": "cull_entries", "policyname": "Users see own entries", "permissive": "PERMISSIVE", "roles": "{public}", "cmd": "ALL", "qual": "(auth.uid() = user_id)", "with_check": null },
+    { "schemaname": "public", "tablename": "cull_targets", "policyname": "Users manage own targets", "permissive": "PERMISSIVE", "roles": "{public}", "cmd": "ALL", "qual": "(auth.uid() = user_id)", "with_check": "(auth.uid() = user_id)" },
+    { "schemaname": "public", "tablename": "ground_targets", "policyname": "Users see own ground targets", "permissive": "PERMISSIVE", "roles": "{public}", "cmd": "ALL", "qual": "(auth.uid() = user_id)", "with_check": null },
+    { "schemaname": "public", "tablename": "grounds", "policyname": "Users see own grounds", "permissive": "PERMISSIVE", "roles": "{public}", "cmd": "ALL", "qual": "(auth.uid() = user_id)", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicate_anonymous_culls", "policyname": "syndicate_anonymous_culls_select_member", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "SELECT", "qual": "(is_syndicate_member_active(syndicate_id) OR is_syndicate_manager(syndicate_id))", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicate_invites", "policyname": "syndicate_invites_delete_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "DELETE", "qual": "is_syndicate_manager(syndicate_id)", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicate_invites", "policyname": "syndicate_invites_insert_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "INSERT", "qual": null, "with_check": "(is_syndicate_manager(syndicate_id) AND (created_by = auth.uid()))" },
+    { "schemaname": "public", "tablename": "syndicate_invites", "policyname": "syndicate_invites_select_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "SELECT", "qual": "is_syndicate_manager(syndicate_id)", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicate_invites", "policyname": "syndicate_invites_update_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "UPDATE", "qual": "is_syndicate_manager(syndicate_id)", "with_check": "is_syndicate_manager(syndicate_id)" },
+    { "schemaname": "public", "tablename": "syndicate_member_allocations", "policyname": "syndicate_alloc_all_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "ALL", "qual": "is_syndicate_manager(syndicate_id)", "with_check": "is_syndicate_manager(syndicate_id)" },
+    { "schemaname": "public", "tablename": "syndicate_member_allocations", "policyname": "syndicate_alloc_select_own_or_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "SELECT", "qual": "(is_syndicate_manager(syndicate_id) OR ((user_id = auth.uid()) AND is_syndicate_member_active(syndicate_id)))", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicate_members", "policyname": "syndicate_members_insert_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "INSERT", "qual": null, "with_check": "is_syndicate_manager(syndicate_id)" },
+    { "schemaname": "public", "tablename": "syndicate_members", "policyname": "syndicate_members_select", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "SELECT", "qual": "(is_syndicate_member_active(syndicate_id) OR is_syndicate_manager(syndicate_id))", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicate_members", "policyname": "syndicate_members_update_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "UPDATE", "qual": "is_syndicate_manager(syndicate_id)", "with_check": "is_syndicate_manager(syndicate_id)" },
+    { "schemaname": "public", "tablename": "syndicate_members", "policyname": "syndicate_members_update_self_leave", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "UPDATE", "qual": "(user_id = auth.uid())", "with_check": "(user_id = auth.uid())" },
+    { "schemaname": "public", "tablename": "syndicate_targets", "policyname": "syndicate_targets_all_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "ALL", "qual": "is_syndicate_manager(syndicate_id)", "with_check": "is_syndicate_manager(syndicate_id)" },
+    { "schemaname": "public", "tablename": "syndicate_targets", "policyname": "syndicate_targets_select_members", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "SELECT", "qual": "is_syndicate_member_active(syndicate_id)", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicates", "policyname": "syndicates_delete_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "DELETE", "qual": "is_syndicate_manager(id)", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicates", "policyname": "syndicates_insert_creator", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "INSERT", "qual": null, "with_check": "(created_by = auth.uid())" },
+    { "schemaname": "public", "tablename": "syndicates", "policyname": "syndicates_select_member", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "SELECT", "qual": "(is_syndicate_member_active(id) OR is_syndicate_manager(id))", "with_check": null },
+    { "schemaname": "public", "tablename": "syndicates", "policyname": "syndicates_update_manager", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "UPDATE", "qual": "is_syndicate_manager(id)", "with_check": "is_syndicate_manager(id)" }
+  ],
+  "storage_policies": [
+    { "schemaname": "storage", "tablename": "objects", "policyname": "Allow authenticated deletes", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "DELETE", "qual": "((bucket_id = 'cull-photos'::text) AND (split_part(name, '/'::text, 1) = (auth.uid())::text))", "with_check": null },
+    { "schemaname": "storage", "tablename": "objects", "policyname": "Allow authenticated reads own folder", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "SELECT", "qual": "((bucket_id = 'cull-photos'::text) AND (split_part(name, '/'::text, 1) = (auth.uid())::text))", "with_check": null },
+    { "schemaname": "storage", "tablename": "objects", "policyname": "Allow authenticated updates", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "UPDATE", "qual": "((bucket_id = 'cull-photos'::text) AND (split_part(name, '/'::text, 1) = (auth.uid())::text))", "with_check": "((bucket_id = 'cull-photos'::text) AND (split_part(name, '/'::text, 1) = (auth.uid())::text))" },
+    { "schemaname": "storage", "tablename": "objects", "policyname": "Allow authenticated uploads", "permissive": "PERMISSIVE", "roles": "{authenticated}", "cmd": "INSERT", "qual": null, "with_check": "((bucket_id = 'cull-photos'::text) AND (split_part(name, '/'::text, 1) = (auth.uid())::text))" }
+  ]
+}

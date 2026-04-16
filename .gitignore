@@ -1,0 +1,48 @@
+# Node / local tooling
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Cursor
+.cursor/cache/
+.cursor/state/
+.cursor/projects/
+
+# Env / secrets (belt-and-braces — no secrets are meant to live here,
+# but if one ever lands in a stray file, keep it out of history).
+.env
+.env.*
+!.env.example
+*.secrets.json
+service-role-*.json
+
+# Build artefacts — project is a static site; these would only appear
+# if someone later introduces a bundler.
+dist/
+build/
+.cache/
+.parcel-cache/
+.turbo/
+
+# Test output
+coverage/
+.nyc_output/
+
+# Local Supabase CLI state (if anyone installs it)
+supabase/.temp/
+supabase/.branches/
+
+# Local log / dump files
+*.log
+*.dump

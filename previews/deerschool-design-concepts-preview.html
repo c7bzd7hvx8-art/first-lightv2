@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deer School — Design concepts preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0c1209;
+      --panel: #141c10;
+      --card: #1c2618;
+      --stroke: rgba(200, 168, 75, 0.22);
+      --gold: #c8a84b;
+      --cream: #f4f0e6;
+      --muted: #9aa894;
+      --ok: #6bcf6b;
+      --warn: #f0a030;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(200, 168, 75, 0.12), transparent 55%), var(--bg);
+      color: var(--cream);
+      line-height: 1.45;
+      padding: 20px 14px 48px;
+    }
+    .page-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 26px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 640px;
+      margin-bottom: 24px;
+    }
+    .toc {
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 28px;
+      max-width: 640px;
+    }
+    .toc strong { color: var(--gold); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .toc ul { margin: 8px 0 0; padding-left: 18px; color: #c8d4bc; font-size: 13px; }
+    .concept-block {
+      margin-bottom: 40px;
+    }
+    .concept-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 6px;
+    }
+    .concept-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      margin: 0 0 8px;
+    }
+    .concept-desc {
+      color: var(--muted);
+      font-size: 13px;
+      max-width: 640px;
+      margin-bottom: 16px;
+    }
+    /* Phone frame */
+    .phone {
+      width: 100%;
+      max-width: 390px;
+      margin: 0 auto;
+      border-radius: 28px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      background: #0a0f08;
+    }
+    .phone-inner {
+      background: linear-gradient(180deg, #152012 0%, #0e160c 40%, #e8e4dc 40%, #e8e4dc 100%);
+      min-height: 620px;
+      display: flex;
+      flex-direction: column;
+    }
+    /* ── Concept A: Dashboard ── */
+    .ds-top {
+      padding: 48px 18px 20px;
+      position: relative;
+    }
+    .ds-top::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 90% 0%, rgba(200, 168, 75, 0.15), transparent 45%);
+      pointer-events: none;
+    }
+    .ds-brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 1;
+    }
+    .ds-brand small {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: rgba(200, 168, 75, 0.75);
+      text-transform: uppercase;
+    }
+    .ds-h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px;
+      color: #fff;
+      margin: 10px 0 4px;
+      position: relative;
+      z-index: 1;
+    }
+    .ds-tagline {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.45);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 600;
+      position: relative;
+      z-index: 1;
+    }
+    .ds-pill {
+      background: linear-gradient(135deg, #c9a84c, #d4b45a);
+      color: #0f1a0f;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 5px 10px;
+      border-radius: 8px;
+      letter-spacing: 0.06em;
+    }
+    .ds-body {
+      flex: 1;
+      padding: 16px 14px 20px;
+      border-radius: 22px 22px 0 0;
+      margin-top: 8px;
+      background: #ebe7df;
+      position: relative;
+      z-index: 1;
+    }
+    .ds-path {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .ds-path-step {
+      flex: 1;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6b6558;
+      padding: 8px 4px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .ds-path-step.on {
+      background: linear-gradient(135deg, #1a3a0e, #0e220a);
+      color: #f0e6c8;
+      border-color: transparent;
+    }
+    .ds-readiness {
+      background: #fff;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+      margin-bottom: 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+    .ds-readiness h3 {
+      margin: 0 0 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #8a8274;
+      text-transform: uppercase;
+    }
+    .ds-readiness .big {
+      font-family: 'Playfair Display', serif;
+      font-size: 36px;
+      color: #2a2418;
+      line-height: 1;
+    }
+    .ds-readiness .big span { font-size: 14px; color: #8a8274; font-weight: 400; }
+    .ds-donut {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: conic-gradient(var(--ok) 0 72deg, #e8e4dc 72deg 360deg);
+      display: grid;
+      place-items: center;
+    }
+    .ds-donut-inner {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      font-family: 'DM Mono', monospace;
+      color: #2a7a22;
+    }
+    .ds-section {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #8a8274;
+      text-transform: uppercase;
+      margin: 14px 2px 8px;
+    }
+    .ds-grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .ds-card {
+      background: linear-gradient(160deg, #1a2e14, #0f1c0c);
+      color: #f5f0e6;
+      border-radius: 16px;
+      padding: 14px;
+      min-height: 118px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .ds-card.alt {
+      background: #fff;
+      color: #2a2418;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .ds-card .t { font-size: 13px; font-weight: 700; margin-top: 6px; }
+    .ds-card .s { font-size: 10px; opacity: 0.65; margin-top: 4px; line-height: 1.35; }
+    .ds-tools {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .ds-tool {
+      background: #fff;
+      border-radius: 14px;
+      padding: 12px 8px;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: #3a3428;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      min-height: 88px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .ds-tool .ic {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: #eef4e8;
+    }
+    .ds-footnote {
+      font-size: 10px;
+      color: #9a9284;
+      text-align: center;
+      margin-top: 12px;
+    }
+
+    /* ── Concept B: Quiz ── */
+    .quiz-phone .phone-inner {
+      background: linear-gradient(180deg, #121a10 0%, #121a10 32%, #f2efe8 32%, #f2efe8 100%);
+    }
+    .qz-bar {
+      padding: 44px 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .qz-back {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+    }
+    .qz-meta {
+      flex: 1;
+    }
+    .qz-steps {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .qz-step {
+      height: 3px;
+      flex: 1;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .qz-step.done { background: var(--gold); }
+    .qz-chip {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(200, 168, 75, 0.9);
+    }
+    .qz-body {
+      flex: 1;
+      padding: 0 14px 14px;
+    }
+    .qz-q {
+      background: #fff;
+      border-radius: 18px;
+      padding: 18px 16px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+      margin-bottom: 10px;
+    }
+    .qz-q .n { font-size: 10px; font-weight: 700; color: #9a9284; letter-spacing: 0.08em; }
+    .qz-q .q { font-size: 16px; font-weight: 600; color: #1e1a14; margin-top: 8px; line-height: 1.45; }
+    .qz-opt {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: #fff;
+      border: 1.5px solid #e0dcd4;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .qz-opt.sel {
+      border-color: #5a7a30;
+      background: linear-gradient(90deg, rgba(90, 122, 48, 0.08), #fff);
+    }
+    .qz-letter {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: #f0ebe3;
+      font-size: 12px;
+      font-weight: 800;
+      color: #4a453c;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .qz-opt.sel .qz-letter { background: #5a7a30; color: #fff; }
+    .qz-opt p { margin: 0; font-size: 13px; color: #2a2418; }
+    .qz-rail {
+      display: flex;
+      gap: 8px;
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+      background: rgba(255, 255, 255, 0.96);
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .qz-btn-sec {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1.5px solid #d8d2c6;
+      background: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      color: #6b6558;
+    }
+    .qz-btn-pri {
+      flex: 1;
+      padding: 12px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, #5a7a30, #0e2a08);
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    /* ── Concept C: Results ── */
+    .res-phone .phone-inner {
+      background: linear-gradient(180deg, #0f160c 0%, #0f160c 38%, #ebe7df 38%, #ebe7df 100%);
+    }
+    .res-hero {
+      text-align: center;
+      padding: 48px 20px 24px;
+    }
+    .res-score {
+      font-family: 'Playfair Display', serif;
+      font-size: 64px;
+      color: #fff;
+      line-height: 1;
+    }
+    .res-score small { font-size: 22px; color: rgba(255, 255, 255, 0.35); font-weight: 400; }
+    .res-badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(255, 138, 128, 0.2);
+      color: #ffb4a8;
+      border: 1px solid rgba(255, 138, 128, 0.35);
+    }
+    .res-sub {
+      font-size: 10px;
+      color: rgba(200, 168, 75, 0.55);
+      margin-top: 8px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .res-scroll {
+      padding: 16px 14px 20px;
+    }
+    .res-next {
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+    }
+    .res-next h4 {
+      margin: 0 0 10px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #5a7a30;
+    }
+    .res-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      border-radius: 10px;
+      background: #f6f3ec;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #2a2418;
+    }
+    .res-row span { font-family: 'DM Mono', monospace; font-size: 11px; color: #b35c00; }
+    .res-cta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .res-cta button {
+      padding: 12px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 12px;
+      border: none;
+      cursor: default;
+    }
+    .res-cta .p { background: linear-gradient(135deg, #5a7a30, #0e220a); color: #fff; }
+    .res-cta .s { background: #fff; border: 1.5px solid #ddd8ce; color: #4a453c; }
+
+    .legend {
+      font-size: 11px;
+      color: #7a8870;
+      max-width: 390px;
+      margin: 10px auto 0;
+      padding: 0 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="page-title">Deer School — design direction preview</h1>
+  <p class="lede">
+    These are <strong>static mockups only</strong> (no app wiring). Each block shows a considerable visual upgrade you could adopt:
+    clearer hierarchy, a guided study path, richer readiness feedback, lettered quiz options, and a results hero that reads like an outcome screen.
+  </p>
+
+  <div class="toc">
+    <strong>In this file</strong>
+    <ul>
+      <li><strong>A — Dashboard</strong> · study path strip · donut readiness · unified dark study cards + light tools row</li>
+      <li><strong>B — Quiz</strong> · stepped progress · floating question card · A–D option rows · dual rail actions</li>
+      <li><strong>C — Results</strong> · large typographic score · outcome badge · “revise next” as first-class card</li>
+    </ul>
+  </div>
+
+  <!-- A -->
+  <section class="concept-block">
+    <div class="concept-label">Concept A</div>
+    <h2 class="concept-title">Dashboard — guided path + richer readiness</h2>
+    <p class="concept-desc">
+      Adds a <em>three-step strip</em> (Study → Practise → Exam) so the app feels like a course, not a menu.
+      Readiness becomes a <em>visual ring + numeric headline</em> instead of a thin bar alone. Study modes share one dark “primary lane” language; tools stay compact in a light row for parity.
+    </p>
+    <div class="phone">
+      <div class="phone-inner">
+        <div class="ds-top">
+          <div class="ds-brand">
+            <small>First Light</small>
+            <span class="ds-pill">DSC1 PREP</span>
+          </div>
+          <div class="ds-h1">Deer School</div>
+          <div class="ds-tagline">Study · Practise · Pass</div>
+        </div>
+        <div class="ds-body">
+          <div class="ds-path">
+            <div class="ds-path-step on">Study</div>
+            <div class="ds-path-step">Practise</div>
+            <div class="ds-path-step">Exam</div>
+          </div>
+          <div class="ds-readiness">
+            <div>
+              <h3>Exam readiness</h3>
+              <div class="big">72<span>%</span></div>
+              <div style="font-size:10px;color:#8a8274;margin-top:6px;">Rolling avg · pass 80%</div>
+            </div>
+            <div class="ds-donut"><div class="ds-donut-inner">72%</div></div>
+          </div>
+          <div class="ds-section">Study modes</div>
+          <div class="ds-grid2">
+            <div class="ds-card">
+              <div style="font-size:22px;">⚡</div>
+              <div class="t">Quick quiz</div>
+              <div class="s">10 random questions · warm up</div>
+            </div>
+            <div class="ds-card alt">
+              <div style="font-size:22px;color:#3a5a9a;">📋</div>
+              <div class="t">Mock exam</div>
+              <div class="s">50 Q · timed · 80% pass</div>
+            </div>
+          </div>
+          <div class="ds-section">Tools</div>
+          <div class="ds-tools">
+            <div class="ds-tool"><div class="ic"></div>Reference</div>
+            <div class="ds-tool"><div class="ic" style="background:#fff4e8;"></div>Drill</div>
+            <div class="ds-tool"><div class="ic" style="background:#f0e8ff;"></div>Weak</div>
+          </div>
+          <p class="ds-footnote">Mock-up only — spacing, colour, and copy are illustrative.</p>
+        </div>
+      </div>
+    </div>
+    <p class="legend">Idea: one visual system for “modes you study in” vs “utilities you open beside study.”</p>
+  </section>
+
+  <!-- B -->
+  <section class="concept-block">
+    <div class="concept-label">Concept B</div>
+    <h2 class="concept-title">Quiz — stepped flow + lettered answers</h2>
+    <p class="concept-desc">
+      Replace a single thin progress bar with <em>micro-steps</em> (one segment per question chunk).
+      Options read like an exam paper: <strong>A–D</strong> badges, more breathing room, selected state with a left accent (not only colour).
+    </p>
+    <div class="phone quiz-phone">
+      <div class="phone-inner">
+        <div class="qz-bar">
+          <div class="qz-back">←</div>
+          <div class="qz-meta">
+            <div class="qz-steps">
+              <div class="qz-step done"></div><div class="qz-step done"></div><div class="qz-step done"></div>
+              <div class="qz-step"></div><div class="qz-step"></div><div class="qz-step"></div><div class="qz-step"></div><div class="qz-step"></div><div class="qz-step"></div><div class="qz-step"></div>
+            </div>
+            <div class="qz-chip">Legislation · Question 4 of 10</div>
+          </div>
+        </div>
+        <div class="qz-body">
+          <div class="qz-q">
+            <div class="n">Question</div>
+            <div class="q">Under the Deer Act 1991, when may deer normally be shot?</div>
+          </div>
+          <div class="qz-opt sel">
+            <div class="qz-letter">A</div>
+            <p>From one hour before sunrise until one hour after sunset</p>
+          </div>
+          <div class="qz-opt">
+            <div class="qz-letter">B</div>
+            <p>Only during daylight hours as defined by Natural England</p>
+          </div>
+          <div class="qz-opt">
+            <div class="qz-letter">C</div>
+            <p>From civil dawn until civil dusk</p>
+          </div>
+          <div class="qz-opt">
+            <div class="qz-letter">D</div>
+            <p>Whenever safe to do so on private land</p>
+          </div>
+        </div>
+        <div class="qz-rail">
+          <button type="button" class="qz-btn-sec">Quit</button>
+          <button type="button" class="qz-btn-pri">Check answer →</button>
+        </div>
+      </div>
+    </div>
+    <p class="legend">Idea: “exam paper” mental model + less reliance on colour alone for selection.</p>
+  </section>
+
+  <!-- C -->
+  <section class="concept-block">
+    <div class="concept-label">Concept C</div>
+    <h2 class="concept-title">Results — outcome-first screen</h2>
+    <p class="concept-desc">
+      Make the score the <em>hero moment</em> (large Playfair numeral). Verdict as a pill. Push “what next” above generic buttons so users always leave with a plan.
+    </p>
+    <div class="phone res-phone">
+      <div class="phone-inner">
+        <div class="res-hero">
+          <div class="res-score">68<small>%</small></div>
+          <div class="res-badge">Below pass · keep practising</div>
+          <div class="res-sub">34 / 50 correct · Mock exam</div>
+        </div>
+        <div class="res-scroll">
+          <div class="res-next">
+            <h4>What to revise next</h4>
+            <div class="res-row">Legislation <span>52%</span></div>
+            <div class="res-row">Meat hygiene <span>60%</span></div>
+          </div>
+          <div class="res-cta">
+            <button type="button" class="p">Drill weakest</button>
+            <button type="button" class="s">Dashboard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="legend">Idea: outcome emotion + immediate next action before “try again.”</p>
+  </section>
+
+  <p class="lede" style="margin-top:32px;margin-bottom:0;">
+    Open this file from your static server, e.g.
+    <a href="http://localhost:4173/deerschool-design-concepts-preview.html" style="color:var(--gold);">http://localhost:4173/deerschool-design-concepts-preview.html</a>
+    — nothing here changes the live Deer School app.
+  </p>
+</body>
+</html>

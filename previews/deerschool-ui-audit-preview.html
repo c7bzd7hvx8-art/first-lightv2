@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deer School UI Audit Preview</title>
+  <style>
+    :root {
+      --bg: #0d170a;
+      --panel: #12210e;
+      --card: #1a2a14;
+      --text: #e9efde;
+      --muted: #afbaa0;
+      --gold: #c8a84b;
+      --ok: #7adf7a;
+      --warn: #f0c870;
+      --risk: #ff8a80;
+      --line: rgba(255, 255, 255, 0.1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(160deg, #081006, var(--bg));
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+    .hero {
+      background: linear-gradient(160deg, rgba(200, 168, 75, 0.14), rgba(26, 42, 20, 0.92));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      color: #fff7dc;
+    }
+    h2 {
+      margin: 20px 0 10px;
+      font-size: 18px;
+      color: var(--gold);
+    }
+    p { margin: 8px 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .item {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .pill {
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .sev-high { background: rgba(255, 138, 128, 0.16); color: var(--risk); border: 1px solid rgba(255, 138, 128, 0.35); }
+    .sev-med { background: rgba(240, 200, 112, 0.15); color: var(--warn); border: 1px solid rgba(240, 200, 112, 0.35); }
+    .sev-low { background: rgba(122, 223, 122, 0.15); color: var(--ok); border: 1px solid rgba(122, 223, 122, 0.35); }
+    .eff-s { background: rgba(255, 255, 255, 0.08); color: #d7e0ca; border: 1px solid rgba(255, 255, 255, 0.16); }
+    .eff-m { background: rgba(255, 255, 255, 0.08); color: #d7e0ca; border: 1px solid rgba(255, 255, 255, 0.16); }
+    .eff-l { background: rgba(255, 255, 255, 0.08); color: #d7e0ca; border: 1px solid rgba(255, 255, 255, 0.16); }
+    .title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #f8f6ec;
+      margin-bottom: 4px;
+    }
+    .why { color: var(--muted); margin-bottom: 6px; }
+    .do {
+      color: #dce8cc;
+      font-size: 14px;
+      margin: 0;
+    }
+    .summary {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .summary ul {
+      margin: 8px 0 0 18px;
+      color: #d8e1cb;
+    }
+    .foot {
+      margin-top: 20px;
+      color: #9fae90;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>Deer School — Full UI Audit Preview</h1>
+      <p>Scope: dashboard, quiz, results, category drill, quick reference, motion, responsiveness, readability, accessibility, and study-flow friction.</p>
+      <p>Intent: suggest substantial improvements without changing current behavior.</p>
+    </div>
+
+    <h2>High-Impact Recommendations</h2>
+    <div class="grid">
+      <div class="item">
+        <div class="meta">
+          <span class="pill sev-high">High Impact</span>
+          <span class="pill eff-m">Effort: Medium</span>
+        </div>
+        <div class="title">1) Add a persistent bottom action rail in quiz</div>
+        <p class="why">On long explanations, users scroll to find the Next button. This slows learning cadence and causes accidental exits.</p>
+        <p class="do">Keep a sticky footer with primary action (`Next` / `See results`) and secondary (`Quit`) while preserving current content flow.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta">
+          <span class="pill sev-high">High Impact</span>
+          <span class="pill eff-m">Effort: Medium</span>
+        </div>
+        <div class="title">2) Improve option-state clarity (selected vs correct vs disabled)</div>
+        <p class="why">Current color-only state changes can blur together on small screens and for color-vision variance.</p>
+        <p class="do">Add icon labels + stronger border variants + subtle left accent bar for each state to reduce cognitive load.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta">
+          <span class="pill sev-high">High Impact</span>
+          <span class="pill eff-s">Effort: Small</span>
+        </div>
+        <div class="title">3) Add session context chip in quiz header</div>
+        <p class="why">Users can lose context between Quick / Mock / Drill / Weak Areas once inside questions.</p>
+        <p class="do">Show a compact chip like “Mode: Mock Exam · 50 Q · Timed” beneath category badge.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta">
+          <span class="pill sev-high">High Impact</span>
+          <span class="pill eff-m">Effort: Medium</span>
+        </div>
+        <div class="title">4) Rework dashboard “Tools” card visual consistency</div>
+        <p class="why">Three tools use heavy inline styling and appear visually separate from study modes; hierarchy feels fragmented.</p>
+        <p class="do">Unify all tiles into one reusable component system (icon frame, title, subtext, status badge), preserve existing actions.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta">
+          <span class="pill sev-high">High Impact</span>
+          <span class="pill eff-l">Effort: Large</span>
+        </div>
+        <div class="title">5) Add “Continue where you left off” resume card</div>
+        <p class="why">If users leave during a quiz, progress is lost and motivation drops, especially for timed mock sessions.</p>
+        <p class="do">Persist in-progress session state and offer Resume/Discard card at top of dashboard.</p>
+      </div>
+    </div>
+
+    <h2>Accessibility and Readability</h2>
+    <div class="grid">
+      <div class="item">
+        <div class="meta"><span class="pill sev-high">High Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">6) Add visible focus styles for all interactive elements</div>
+        <p class="why">Keyboard path exists for many controls, but several buttons rely mostly on hover/active states.</p>
+        <p class="do">Apply consistent `:focus-visible` ring treatment across dashboard tiles, quiz answers, nav controls, and tabs.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-med">Medium Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">7) Increase low-contrast muted text in key learning moments</div>
+        <p class="why">Muted greys in readiness notes, subtags, and tiny helper labels can be hard to read outdoors.</p>
+        <p class="do">Raise contrast by 10–15% and minimum font-size in learning-critical copy blocks.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-med">Medium Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">8) Strengthen touch target size for mini controls</div>
+        <p class="why">Back arrows and small chips are near minimum touch size, increasing mistaps under gloves/wet conditions.</p>
+        <p class="do">Set minimum 44x44 interactive areas and preserve visual size via larger hitbox wrappers.</p>
+      </div>
+    </div>
+
+    <h2>Learning Flow and Motivation</h2>
+    <div class="grid">
+      <div class="item">
+        <div class="meta"><span class="pill sev-high">High Impact</span><span class="pill eff-m">Effort: Medium</span></div>
+        <div class="title">9) Add end-of-session “What to revise next” panel</div>
+        <p class="why">Results show category percentages but not a clear next action.</p>
+        <p class="do">Generate top 2 weak categories and direct links to Drill / Weak Areas with one-tap CTA.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-med">Medium Impact</span><span class="pill eff-m">Effort: Medium</span></div>
+        <div class="title">10) Improve Weak Areas onboarding copy and lock state</div>
+        <p class="why">Disabled state is clear but lacks progression cues for first-time users.</p>
+        <p class="do">Show progress meter: “Unlocks after 20 answered questions” + tiny inline guidance on dashboard.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-med">Medium Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">11) Add micro-celebrations for streak behavior</div>
+        <p class="why">Only pass confetti appears on high outcome; consistent encouragement can improve repeat use.</p>
+        <p class="do">Show small streak chips (“3 sessions this week”, “2 categories improved”) without gamifying excessively.</p>
+      </div>
+    </div>
+
+    <h2>Information Architecture (Quick Reference)</h2>
+    <div class="grid">
+      <div class="item">
+        <div class="meta"><span class="pill sev-high">High Impact</span><span class="pill eff-m">Effort: Medium</span></div>
+        <div class="title">12) Add search/filter in Quick Reference</div>
+        <p class="why">Content density is high; tab-only navigation is slower under pressure in the field.</p>
+        <p class="do">Add local keyword search with highlights (e.g., “CWD”, “Roe”, “APHA”) and jump-to section.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-med">Medium Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">13) Add sticky tab strip for reference sections</div>
+        <p class="why">Long scroll inside sections makes users lose tab context.</p>
+        <p class="do">Keep reference tabs sticky at top of scroll container for faster section switching.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-med">Medium Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">14) Add “last updated” and source hint per legal table</div>
+        <p class="why">Trust and compliance confidence increase when legal data recency is explicit.</p>
+        <p class="do">Append compact metadata row under critical legal/calibre cards.</p>
+      </div>
+    </div>
+
+    <h2>Technical UI Hygiene (No behavior change)</h2>
+    <div class="grid">
+      <div class="item">
+        <div class="meta"><span class="pill sev-med">Medium Impact</span><span class="pill eff-m">Effort: Medium</span></div>
+        <div class="title">15) Reduce inline style usage in `deerschool.html`</div>
+        <p class="why">Inline styles make consistency and future theming harder; current file mixes class and inline patterns heavily.</p>
+        <p class="do">Extract repeated inline button/card patterns into CSS utility classes for maintainability.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-low">Low Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">16) Consolidate duplicate CSS rule blocks for reference tables</div>
+        <p class="why">Duplicate selectors for `.ref-table` and related classes increase drift risk.</p>
+        <p class="do">Merge duplicate blocks into one canonical section.</p>
+      </div>
+
+      <div class="item">
+        <div class="meta"><span class="pill sev-low">Low Impact</span><span class="pill eff-s">Effort: Small</span></div>
+        <div class="title">17) Consolidate duplicate `DOMContentLoaded` initializers</div>
+        <p class="why">Two separate listeners in `deerschool.js` are safe but increase maintenance complexity.</p>
+        <p class="do">Combine into one init sequence to keep lifecycle predictable.</p>
+      </div>
+    </div>
+
+    <div class="summary">
+      <strong>Recommended rollout plan</strong>
+      <ul>
+        <li>Phase 1 (fast wins): focus states, touch target sizing, session context chip, stronger option state visuals.</li>
+        <li>Phase 2 (learning flow): sticky action rail, revise-next panel, weak-area onboarding improvements.</li>
+        <li>Phase 3 (structure): componentize dashboard tool tiles and remove repeated inline styling patterns.</li>
+      </ul>
+    </div>
+
+    <p class="foot">Audit generated for preview/review only. No Deer School runtime behavior changed.</p>
+  </div>
+</body>
+</html>

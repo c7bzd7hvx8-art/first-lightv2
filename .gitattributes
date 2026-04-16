@@ -1,0 +1,33 @@
+# Default: normalise line endings to LF on commit, check out platform-native.
+* text=auto eol=lf
+
+# Shell / bat are touched from their native platform.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+*.sh        text eol=lf
+
+# Binary — never try to diff or merge these.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+
+# Keep diary.js / app.js line-endings stable across Win/macOS checkouts —
+# Cache-busting in the service worker relies on byte-identical content on
+# every machine that deploys.
+*.js        text eol=lf
+*.mjs       text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.sql       text eol=lf
+*.md        text eol=lf
+*.json      text eol=lf

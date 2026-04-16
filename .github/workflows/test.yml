@@ -1,0 +1,19 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # No npm install — the test suite is zero-dependency, it runs the
+      # built-in node:test runner against lib/fl-pure.mjs through npm test.
+      - run: npm test

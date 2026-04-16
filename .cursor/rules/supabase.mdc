@@ -1,0 +1,18 @@
+---
+description: Supabase work — read in-repo record first; store pastes in repo; do not duplicate asks
+alwaysApply: true
+---
+
+# Supabase — read records first, store outcomes, avoid repeats
+
+When the task involves **Supabase** (SQL, RLS, policies, migrations, storage, RPCs, auth URL config, syndicate schema):
+
+1. **Read first:** `scripts/SUPABASE-RECORD.md` and any artifacts it points to (especially `scripts/supabase-audit-rls-snapshot.json` for RLS / `cull-photos` storage).
+2. **Do not ask** the user to re-run queries or re-paste result sets that are **already recorded** for the same scope, unless:
+   - `SUPABASE-RECORD.md` **Pending** says so,
+   - `_meta.captured` / changelog indicates a **scheduled refresh** or **stale** snapshot, or
+   - the user explicitly changed production and the record is **out of date**.
+3. **When you need new data:** prefer reusing SQL from `scripts/*.sql`; give **clear** “run this in SQL Editor” steps. After the user pastes results, **commit the outcome**: update `SUPABASE-RECORD.md` changelog (and JSON/SQL snapshots where applicable) in the **same** change set.
+4. **RLS snapshot hygiene:** after policy/storage changes, refresh `supabase-audit-rls-snapshot.json`, set `_meta.captured`, run `node scripts/validate-rls-snapshot.mjs`. Details: `scripts/SUPABASE-RECORD.md`.
+
+Never commit **service_role** keys or DB passwords. Full workflow: **`scripts/SUPABASE-RECORD.md`**.

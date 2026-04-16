@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legal time banner — design alternatives</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 16px 48px;
+      background: #0a100a;
+      color: rgba(255,255,255,0.88);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      color: #f0e6d8;
+    }
+    .intro {
+      max-width: 640px;
+      color: rgba(255,255,255,0.55);
+      font-size: 13px;
+      margin-bottom: 28px;
+    }
+    .intro code { color: #c8a84b; font-size: 12px; }
+    section {
+      margin-bottom: 36px;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: rgba(200,168,75,0.85);
+      margin-bottom: 6px;
+    }
+    .section-desc {
+      font-size: 12px;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 12px;
+      line-height: 1.45;
+    }
+
+    /* ═══ CURRENT (matches app — reference) ═══ */
+    .lb-current {
+      position: relative;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 10px 36px rgba(0,0,0,0.45);
+      background: linear-gradient(135deg, #0d2e0d 0%, #1a4a1a 50%, #0f3020 100%);
+      border: 1px solid rgba(80,200,80,0.25);
+    }
+    .lb-current .lb-sky {
+      height: 4px;
+      background: linear-gradient(90deg, #0a3a0a, #2d8a2d, #4ab04a, #2d8a2d, #0a3a0a);
+    }
+    .lb-inner { padding: 16px 18px 14px; position: relative; }
+    .lb-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .lb-col { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; }
+    .lb-centre { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+    .lb-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: rgba(255,255,255,0.4); }
+    .lb-time { font-size: 15px; font-weight: 700; color: rgba(255,255,255,0.9); font-variant-numeric: tabular-nums; }
+    .lb-legal { font-size: 10px; color: rgba(255,255,255,0.82); }
+    .lb-status-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: #7adf7a;
+      text-align: center;
+    }
+    .lb-status-sub { font-size: 11px; color: rgba(255,255,255,0.55); text-align: center; }
+    .lb-date { position: absolute; top: 12px; left: 14px; font-size: 10px; color: rgba(255,255,255,0.45); }
+    .lb-loc { font-size: 10px; color: rgba(255,255,255,0.35); text-align: center; margin-top: 8px; }
+
+    /* ═══ A — Editorial / restrained ═══ */
+    .lb-a {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: linear-gradient(180deg, #1a211c 0%, #141a17 100%);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+    }
+    .lb-a .lb-topbar {
+      height: 2px;
+      background: #3d5248;
+      opacity: 0.9;
+    }
+    .lb-a .lb-label { color: rgba(255,255,255,0.38); letter-spacing: 0.08em; }
+    .lb-a .lb-time { color: #e8ebe9; font-weight: 600; }
+    .lb-a .lb-status-title {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #9cbfa8;
+      text-transform: uppercase;
+    }
+    .lb-a .lb-status-sub { color: rgba(255,255,255,0.42); }
+    .lb-a .lb-legal { color: rgba(255,255,255,0.5); }
+    .lb-a .lb-date { color: rgba(255,255,255,0.35); }
+    .lb-a .lb-loc { color: rgba(255,255,255,0.28); }
+    .lb-a .lb-icon svg { opacity: 0.75; }
+
+    /* ═══ B — Dashboard / instrument ═══ */
+    .lb-b {
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: #0e1210;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .lb-b .lb-inner { padding: 14px 16px; }
+    .lb-b .lb-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 12px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .lb-b .lb-pill {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #5a7a62;
+      border: 1px solid rgba(90,122,98,0.5);
+      padding: 3px 8px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+    }
+    .lb-b .lb-status-title {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: #8fdf9a;
+      letter-spacing: -0.02em;
+    }
+    .lb-b .lb-time { font-family: 'IBM Plex Sans', monospace; font-size: 16px; letter-spacing: 0.02em; }
+    .lb-b .lb-label { font-size: 8px; opacity: 0.85; }
+    .lb-b .lb-div { height: 48px; width: 1px; background: rgba(255,255,255,0.1); }
+    .lb-b .lb-date { font-family: 'IBM Plex Sans', monospace; font-size: 10px; opacity: 0.5; }
+    .lb-b .lb-loc { font-family: 'IBM Plex Sans', sans-serif; font-size: 10px; opacity: 0.4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 10px; }
+
+    /* ═══ C — Soft card (muted, no neon strip) ═══ */
+    .lb-c {
+      border-radius: 20px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      backdrop-filter: blur(8px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .lb-c .lb-sky { height: 3px; background: linear-gradient(90deg, transparent, rgba(120,150,130,0.35), transparent); }
+    .lb-c .lb-status-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 16px;
+      color: #a8d4b0;
+      font-weight: 600;
+    }
+    .lb-c .lb-time { color: #f2f2f0; font-weight: 600; }
+    .lb-c .lb-label { color: rgba(255,255,255,0.35); }
+    .lb-c .lb-legal { color: rgba(255,255,255,0.55); }
+
+    /* ═══ D — Typography-first (single band) ═══ */
+    .lb-d {
+      border-radius: 14px;
+      background: #151c18;
+      border: 1px solid rgba(255,255,255,0.09);
+      padding: 0;
+      overflow: hidden;
+    }
+    .lb-d .lb-d-head {
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .lb-d .lb-d-date { font-size: 11px; color: rgba(255,255,255,0.4); }
+    .lb-d .lb-d-status {
+      font-family: 'Playfair Display', serif;
+      font-size: 17px;
+      color: #8ecf9a;
+      font-weight: 700;
+    }
+    .lb-d .lb-d-sub { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 2px; }
+    .lb-d .lb-d-times {
+      display: flex;
+      justify-content: space-between;
+      padding: 14px 16px 12px;
+      gap: 12px;
+    }
+    .lb-d .lb-d-block { flex: 1; text-align: center; }
+    .lb-d .lb-d-block:first-child { text-align: left; }
+    .lb-d .lb-d-block:last-child { text-align: right; }
+    .lb-d .lb-label { margin-bottom: 4px; }
+    .lb-d .lb-time { font-size: 18px; }
+    .lb-d .lb-legal { margin-top: 4px; }
+    .lb-d .lb-loc { padding: 0 16px 14px; margin: 0; text-align: left; border: none; }
+
+    .mini-sun { width: 28px; height: 22px; display: block; margin-bottom: 2px; }
+    .hint {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Legal time banner — options</h1>
+  <p class="intro">Sample data is static (Saturday · example times). Open this file in your browser: <code>legal-banner-preview.html</code> (double-click or serve the folder). Pick a direction (A–D); we can then wire the winner into <code>index.html</code> + <code>styles.css</code>.</p>
+
+  <section>
+    <div class="section-title">Current — in-app reference</div>
+    <p class="section-desc">Bright green gradient, colourful “sky” strip, illustrated sunrise/sunset SVGs, glowing sun arc — reads playful / game-like to some viewers.</p>
+    <div class="lb-current">
+      <div class="lb-sky"></div>
+      <div class="lb-inner">
+        <div class="lb-date">Sat 11 · Apr 2026</div>
+        <div class="lb-row">
+          <div class="lb-col lb-icon">
+            <svg class="mini-sun" viewBox="0 0 28 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M0,22 Q4,14 8,16 Q11,18 14,13 Q17,8 20,12 Q23,15 28,11 L28,22 Z" fill="#3a5a2a" opacity="0.85"/>
+              <path d="M0,22 Q5,17 9,19 Q13,21 16,17 Q19,14 24,18 Q26,19 28,17 L28,22 Z" fill="#2a4a1a" opacity="0.9"/>
+              <circle cx="14" cy="13" r="5" fill="#f5b830" opacity="0.95"/>
+              <g stroke="#f5b830" stroke-width="1.2" stroke-linecap="round" opacity="0.7">
+                <line x1="14" y1="6" x2="14" y2="4"/><line x1="18.5" y1="7.5" x2="19.8" y2="6.2"/>
+                <line x1="9.5" y1="7.5" x2="8.2" y2="6.2"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="8" y1="12" x2="6" y2="12"/>
+              </g>
+            </svg>
+            <span class="lb-label">Sunrise</span>
+            <span class="lb-time">06:42</span>
+            <span class="lb-legal">Legal from 05:42</span>
+          </div>
+          <div class="lb-centre">
+            <svg viewBox="0 0 200 44" width="100%" style="max-width:200px;height:40px" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M10,40 Q100,2 190,40" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+              <circle cx="120" cy="18" r="6" fill="#f5c842" filter="url(#g)"/>
+              <defs><filter id="g"><feGaussianBlur stdDeviation="2"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+            </svg>
+            <div class="lb-status-title">Legal to shoot</div>
+            <div class="lb-status-sub">Within legal hours</div>
+          </div>
+          <div class="lb-col lb-icon">
+            <svg class="mini-sun" viewBox="0 0 28 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <ellipse cx="14" cy="16" rx="12" ry="4" fill="#e06010" opacity="0.3"/>
+              <circle cx="14" cy="16" r="5" fill="#e87820" opacity="0.95"/>
+              <path d="M0,22 Q4,13 8,15 Q11,17 14,12 Q17,7 20,11 Q23,14 28,10 L28,22 Z" fill="#2a3a1a" opacity="0.9"/>
+            </svg>
+            <span class="lb-label">Sunset</span>
+            <span class="lb-time">19:58</span>
+            <span class="lb-legal">Legal until 20:58</span>
+          </div>
+        </div>
+        <div class="lb-loc">📍 Example Estate, Gloucestershire</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">A — Editorial / restrained</div>
+    <p class="section-desc">Flat charcoal–green panel, thin top rule (no rainbow strip). IBM Plex for status; muted sage accent; simplified icons. Feels magazine or outdoor-brand brochure.</p>
+    <div class="lb-a lb-current">
+      <div class="lb-topbar"></div>
+      <div class="lb-inner">
+        <div class="lb-date">Sat 11 · Apr 2026</div>
+        <div class="lb-row">
+          <div class="lb-col">
+            <svg class="mini-sun" viewBox="0 0 28 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="14" cy="11" r="4" fill="none" stroke="#8a9a90" stroke-width="1.2"/>
+              <path d="M14 4v2M14 16v2M6 11H4M24 11h-2" stroke="#8a9a90" stroke-width="1"/>
+            </svg>
+            <span class="lb-label">Sunrise</span>
+            <span class="lb-time">06:42</span>
+            <span class="lb-legal">Legal from 05:42</span>
+          </div>
+          <div class="lb-centre">
+            <span class="lb-status-title">Legal to shoot</span>
+            <span class="lb-status-sub">Within legal hours</span>
+          </div>
+          <div class="lb-col">
+            <svg class="mini-sun" viewBox="0 0 28 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M4 18h20" stroke="#8a9a90" stroke-width="1"/>
+              <circle cx="14" cy="12" r="4" fill="none" stroke="#a09080" stroke-width="1.2"/>
+            </svg>
+            <span class="lb-label">Sunset</span>
+            <span class="lb-time">19:58</span>
+            <span class="lb-legal">Legal until 20:58</span>
+          </div>
+        </div>
+        <div class="lb-loc">📍 Example Estate, Gloucestershire</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">B — Dashboard / instrument</div>
+    <p class="section-desc">Dense, met-office feel: monospace times, grid, small “live” pill, vertical separators. Less illustration, more data.</p>
+    <div class="lb-b">
+      <div class="lb-inner">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <span class="lb-pill">Live</span>
+            <div class="lb-date" style="position:static;margin-top:2px;">2026-04-11 · Sat</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="lb-status-title" style="margin-bottom:2px;">LEGAL</div>
+            <div class="lb-status-sub">Shooting permitted</div>
+          </div>
+        </div>
+        <div class="lb-grid">
+          <div class="lb-col" style="align-items:flex-start;">
+            <span class="lb-label">Sunrise</span>
+            <span class="lb-time">06:42</span>
+            <span class="lb-legal">From 05:42</span>
+          </div>
+          <div class="lb-div"></div>
+          <div class="lb-col" style="align-items:flex-end;">
+            <span class="lb-label">Sunset</span>
+            <span class="lb-time">19:58</span>
+            <span class="lb-legal">Until 20:58</span>
+          </div>
+        </div>
+        <div class="lb-loc">📍 Example Estate, Gloucestershire</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">C — Soft glass (muted)</div>
+    <p class="section-desc">Frosted card, whisper-thin highlight strip, no saturated greens. Playfair kept for warmth but softer palette — less “arcade”, more “premium app”.</p>
+    <div class="lb-c lb-current">
+      <div class="lb-sky"></div>
+      <div class="lb-inner">
+        <div class="lb-date">Sat 11 · Apr 2026</div>
+        <div class="lb-row">
+          <div class="lb-col">
+            <span class="lb-label">Sunrise</span>
+            <span class="lb-time">06:42</span>
+            <span class="lb-legal">Legal from 05:42</span>
+          </div>
+          <div class="lb-centre">
+            <span class="lb-status-title">Legal to shoot</span>
+            <span class="lb-status-sub">Within legal hours</span>
+          </div>
+          <div class="lb-col">
+            <span class="lb-label">Sunset</span>
+            <span class="lb-time">19:58</span>
+            <span class="lb-legal">Legal until 20:58</span>
+          </div>
+        </div>
+        <div class="lb-loc">📍 Example Estate, Gloucestershire</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">D — Typography-first</div>
+    <p class="section-desc">Status as a clear headline row; times as large numerals below. Almost no decoration — fastest to scan, very “serious tool”.</p>
+    <div class="lb-d">
+      <div class="lb-d-head">
+        <div>
+          <div class="lb-d-date">Saturday 11 April 2026</div>
+          <div class="lb-d-sub">Shooting window · Deer Act (England &amp; Wales)</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="lb-d-status">Legal</div>
+          <div class="lb-d-sub">In window</div>
+        </div>
+      </div>
+      <div class="lb-d-times">
+        <div class="lb-d-block">
+          <div class="lb-label">Sunrise</div>
+          <div class="lb-time">06:42</div>
+          <div class="lb-legal">From 05:42</div>
+        </div>
+        <div class="lb-d-block">
+          <div class="lb-label">Sunset</div>
+          <div class="lb-time">19:58</div>
+          <div class="lb-legal">Until 20:58</div>
+        </div>
+      </div>
+      <div class="lb-loc">📍 Example Estate, Gloucestershire</div>
+    </div>
+  </section>
+
+  <p class="hint">Reply with <strong>A</strong>, <strong>B</strong>, <strong>C</strong>, <strong>D</strong>, or a mix (e.g. “A colours + D layout”). We’ll implement the chosen style in the live app and keep illegal / twilight variants consistent.</p>
+</body>
+</html>

@@ -1,0 +1,31 @@
+# Validates scripts/supabase-audit-rls-snapshot.json (structure + required RLS tables).
+# Weekly: same check + stale _meta.captured (re-run SQL in Supabase and update JSON).
+name: RLS snapshot validate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/rls-snapshot-validate.yml'
+  schedule:
+    # Mondays 08:15 UTC — nudge to re-run supabase-rls-audit-queries.sql if snapshot is old
+    - cron: '15 8 * * 1'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate RLS snapshot structure
+        run: node scripts/validate-rls-snapshot.mjs
+
+      - name: Stale snapshot check (scheduled only)
+        if: github.event_name == 'schedule'
+        run: node scripts/validate-rls-snapshot.mjs --max-age-days=75
