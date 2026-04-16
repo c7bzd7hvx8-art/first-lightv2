@@ -17,6 +17,13 @@ import {
   initSupabase as flSupabaseInit
 } from './modules/supabase.mjs';
 import {
+  wxCodeLabel,
+  windDirLabel,
+  fetchCullWeather
+} from './modules/weather.mjs';
+// findOpenMeteoHourlyIndex and diaryLondonWallMs are not re-imported —
+// they're used only by fetchCullWeather (inside the module) and tests.
+import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
   SVG_FL_IMAGE_OFF, SVG_FL_PIN, SVG_FL_GPS, SVG_FL_PENCIL,
@@ -6040,155 +6047,14 @@ async function saveQuickEntry() {
 
 
 // Open-Meteo WMO codes → abbrev + label + SVG + strip bar (replaces emoji sky cells)
-function wxCodeLabel(code) {
-  var c = code;
-  if (c === 0 || c === null || c === undefined) {
-    return { abbrev: 'CLR', label: 'Clear', wmoTitle: 'WMO code 0', skySvg: SVG_WX_SKY_CLR, barBg: 'linear-gradient(90deg,#5a6a4a,#c8a84b)' };
-  }
-  if (c <= 2) {
-    return { abbrev: 'PTLY', label: 'Partly cloudy', wmoTitle: 'WMO 1–2', skySvg: SVG_WX_SKY_PTLY, barBg: 'linear-gradient(90deg,#c8a84b,#6b7280)' };
-  }
-  if (c === 3) {
-    return { abbrev: 'OVC', label: 'Overcast', wmoTitle: 'WMO code 3', skySvg: SVG_WX_SKY_OVC, barBg: 'linear-gradient(90deg,#5c6670,#8a9399)' };
-  }
-  if (c <= 49) {
-    return { abbrev: 'FG', label: 'Fog', wmoTitle: 'WMO ≤49', skySvg: SVG_WX_SKY_FOG, barBg: 'linear-gradient(90deg,#5c5568,#8a8299)' };
-  }
-  if (c <= 57) {
-    return { abbrev: 'DZ', label: 'Drizzle', wmoTitle: 'WMO 51–57', skySvg: SVG_WX_SKY_DZ, barBg: 'linear-gradient(90deg,#4a5a70,#7a8aa0)' };
-  }
-  if (c <= 65) {
-    return { abbrev: 'RA', label: 'Rain', wmoTitle: 'WMO 61–65', skySvg: SVG_WX_SKY_RAIN, barBg: 'linear-gradient(90deg,#3d5a80,#6a8ab0)' };
-  }
-  if (c <= 77) {
-    return { abbrev: 'SN', label: 'Snow', wmoTitle: 'WMO 71–77', skySvg: SVG_WX_SKY_SNOW, barBg: 'linear-gradient(90deg,#4a6070,#8a9eaa)' };
-  }
-  if (c <= 82) {
-    return { abbrev: 'SHRA', label: 'Showers', wmoTitle: 'WMO 80–82', skySvg: SVG_WX_SKY_SHOWERS, barBg: 'linear-gradient(90deg,#3d5a80,#5a7a98)' };
-  }
-  if (c <= 86) {
-    return { abbrev: 'SHSN', label: 'Snow showers', wmoTitle: 'WMO 85–86', skySvg: SVG_WX_SKY_SNSH, barBg: 'linear-gradient(90deg,#5a6a78,#9aa8b0)' };
-  }
-  if (c <= 99) {
-    return { abbrev: 'TS', label: 'Thunderstorm', wmoTitle: 'WMO 95–99', skySvg: SVG_WX_SKY_TS, barBg: 'linear-gradient(90deg,#8a6a30,#4a5560)' };
-  }
-  return { abbrev: '–', label: 'Unknown', wmoTitle: 'No code', skySvg: SVG_WX_SKY_UNK, barBg: '#555' };
-}
-
-function windDirLabel(deg) {
-  if (deg === null || deg === undefined) return '';
-  var dirs = ['N','NE','E','SE','S','SW','W','NW'];
-  return dirs[Math.round(deg / 45) % 8];
-}
-
 // ── Weather at time of cull ──────────────────────────────────
-// Fetches from Open-Meteo historical or forecast API
-// Only fetches for entries within last 7 days
-// Stores as JSONB in cull_entries.weather_data
-
-function findOpenMeteoHourlyIndex(times, date, hour) {
-  if (!times || !times.length) return -1;
-  var hh = ('0' + hour).slice(-2);
-  var exact = date + 'T' + hh + ':00';
-  var idx = times.indexOf(exact);
-  if (idx !== -1) return idx;
-  var prefix = date + 'T' + hh + ':';
-  for (var i = 0; i < times.length; i++) {
-    var t = times[i];
-    if (typeof t === 'string' && t.indexOf(prefix) === 0) return i;
-  }
-  return -1;
-}
-
-/**
- * Interpret `YYYY-MM-DD` + `HH:MM` wall-clock strings as Europe/London time and
- * return a UTC epoch-ms. Needed because `new Date("YYYY-MM-DDTHH:MM:00")` uses
- * the device's local TZ — fine at home in the UK, wrong when the user is
- * abroad (a 6.9-day-old entry logged at UK wall-clock could slip past the
- * 7-day gate by an hour when recomputed in CET/EST).
- * Works across BST/GMT transitions by asking Intl for the London offset at the
- * target UTC moment and subtracting it.
- */
-function diaryLondonWallMs(dateStr, timeStr) {
-  var y  = parseInt(dateStr.slice(0, 4), 10);
-  var mo = parseInt(dateStr.slice(5, 7), 10) - 1;
-  var d  = parseInt(dateStr.slice(8, 10), 10);
-  var t  = (timeStr || '12:00').split(':');
-  var h  = parseInt(t[0], 10) || 0;
-  var mn = parseInt(t[1], 10) || 0;
-  var utcMs = Date.UTC(y, mo, d, h, mn);
-  try {
-    var fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      timeZoneName: 'longOffset'
-    });
-    var parts = fmt.formatToParts(new Date(utcMs));
-    var tz = parts.find(function (p) { return p.type === 'timeZoneName'; });
-    if (tz) {
-      var m = tz.value.match(/GMT([+-])(\d{2}):?(\d{2})?/);
-      if (m) {
-        var sign = m[1] === '+' ? 1 : -1;
-        var offMs = sign * ((parseInt(m[2], 10) * 3600000) + (parseInt(m[3] || '0', 10) * 60000));
-        return utcMs - offMs;
-      }
-    }
-  } catch (_) { /* fall through to a best-effort fallback */ }
-  // Fallback: assume device TZ is UK (the overwhelmingly common case).
-  return new Date(dateStr + 'T' + (timeStr || '12:00') + ':00').getTime();
-}
-
-async function fetchCullWeather(date, time, lat, lng) {
-  // date: 'YYYY-MM-DD', time: 'HH:MM', lat/lng: numbers
-  if (!date || !lat || !lng) return null;
-
-  // Interpret the entry's wall-clock as Europe/London so the 7-day gate doesn't
-  // drift when the user's device is on holiday in a different TZ.
-  var entryMs = diaryLondonWallMs(date, time);
-  var nowMs = diaryNow().getTime();
-  var ageDays = (nowMs - entryMs) / 86400000;
-
-  // Skip if older than 7 days or in the future
-  if (ageDays > 7 || ageDays < 0) return null;
-
-  var hour = time ? parseInt(time.split(':')[0]) : 12;
-
-  try {
-    // Use forecast API with past_hours for recent entries
-    // past_hours=168 = 7 days back
-    var url = 'https://api.open-meteo.com/v1/forecast'
-      + '?latitude=' + lat + '&longitude=' + lng
-      + '&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,windgusts_10m,surface_pressure,cloud_cover,weather_code,precipitation'
-      + '&past_days=7&forecast_days=1&timezone=auto';
-
-    var r = await fetch(url);
-    if (!r.ok) return null;
-    var d = await r.json();
-
-    // Find the index matching our date+hour (API may use HH:00 or HH:00:00)
-    var times = d.hourly && d.hourly.time ? d.hourly.time : [];
-    var idx = findOpenMeteoHourlyIndex(times, date, hour);
-    if (idx === -1) return null;
-
-    var h = d.hourly;
-    var windKmh = h.wind_speed_10m ? h.wind_speed_10m[idx] : null;
-    var gustKmh = h.windgusts_10m  ? h.windgusts_10m[idx]  : null;
-
-    return {
-      temp:       h.temperature_2m    ? Math.round(h.temperature_2m[idx] * 10) / 10 : null,
-      wind_mph:   windKmh !== null     ? Math.round(windKmh * 0.621)               : null,
-      gust_mph:   gustKmh !== null     ? Math.round(gustKmh * 0.621)               : null,
-      wind_dir:   h.wind_direction_10m ? h.wind_direction_10m[idx]                 : null,
-      pressure:   h.surface_pressure  ? Math.round(h.surface_pressure[idx])        : null,
-      cloud:      h.cloud_cover        ? h.cloud_cover[idx]                         : null,
-      code:       h.weather_code       ? h.weather_code[idx]                        : null,
-      precip_mm:  h.precipitation     ? h.precipitation[idx]                       : null,
-      fetched_at: diaryNow().toISOString()
-    };
-  } catch(e) {
-    console.warn('Weather fetch failed:', e);
-    return null;
-  }
-}
+// The pure helpers (wxCodeLabel, windDirLabel, findOpenMeteoHourlyIndex,
+// diaryLondonWallMs) and the Open-Meteo fetch (fetchCullWeather) have moved
+// to modules/weather.mjs. See MODULARISATION-PLAN.md → Commit F. The
+// persistence wrapper (attachWeatherToEntry) and the render surface
+// (renderWeatherStrip) stay here because they touch `sb`, `currentUser`,
+// `allEntries`, and `esc()` — all still diary.js-local.
+// Weather rows are stored as JSONB in cull_entries.weather_data.
 
 async function attachWeatherToEntry(entryId, date, time, lat, lng) {
   if (!sb || !currentUser || !entryId) return;
