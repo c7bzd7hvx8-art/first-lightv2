@@ -31,6 +31,13 @@ import {
   compressPhotoFile
 } from './modules/photos.mjs';
 import {
+  CAL_COLORS, SP_COLORS_D,
+  AGE_CLASSES, AGE_COLORS, AGE_GROUPS,
+  aggregateShooterStats,
+  aggregateDestinationStats,
+  aggregateTimeOfDayStats
+} from './modules/stats.mjs';
+import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
   SVG_FL_IMAGE_OFF, SVG_FL_PIN, SVG_FL_GPS, SVG_FL_PENCIL,
@@ -6572,11 +6579,7 @@ function renderCullMapPins() {
 }
 
 // ── Calibre & Distance Stats ─────────────────────────────────
-var CAL_COLORS = ['linear-gradient(90deg,#5a7a30,#7adf7a)','linear-gradient(90deg,#c8a84b,#f0c870)',
-  'linear-gradient(90deg,#6a1b9a,#ab47bc)','linear-gradient(90deg,#1565c0,#42a5f5)',
-  'linear-gradient(90deg,#c62828,#ef5350)','linear-gradient(90deg,#00695c,#26a69a)'];
-var SP_COLORS_D = {'Red Deer':'#c8a84b','Roe Deer':'#5a7a30','Fallow':'#f57f17',
-  'Muntjac':'#6a1b9a','Sika':'#1565c0','CWD':'#00695c'};
+// CAL_COLORS and SP_COLORS_D moved to modules/stats.mjs (Commit H).
 
 function buildCalibreDistanceStats(entries) {
   // ── Calibre chart ──
@@ -6696,9 +6699,7 @@ function buildCalibreDistanceStats(entries) {
 
 
 // ── Age Class Breakdown ───────────────────────────────────────
-var AGE_CLASSES = ['Calf / Kid / Fawn', 'Yearling', '2–4 years', '5–8 years', '9+ years'];
-var AGE_COLORS  = ['#5a9a3a',   '#5a7a30',  '#c8a84b',   '#f57f17',   '#c62828'];
-var AGE_GROUPS  = { 'Juvenile': ['Calf / Kid / Fawn','Yearling'], 'Adult': ['2–4 years'], 'Mature': ['5–8 years','9+ years'] };
+// AGE_CLASSES, AGE_COLORS, AGE_GROUPS moved to modules/stats.mjs (Commit H).
 
 function buildAgeStats(entries) {
   var card  = document.getElementById('age-card');
@@ -7247,37 +7248,17 @@ window.addEventListener('offline', function() {
 function buildShooterStats(entries) {
   var card  = document.getElementById('shooter-card');
   var chart = document.getElementById('shooter-chart');
+  var agg = aggregateShooterStats(entries);
 
-  // Count by shooter — normalise blank/undefined to 'Self'
-  var counts = {};
-  entries.forEach(function(e) {
-    var s = (e.shooter && e.shooter.trim()) ? e.shooter.trim() : 'Self';
-    counts[s] = (counts[s]||0) + 1;
-  });
-
-  var shooters = Object.keys(counts);
-
-  // Hide card if everyone is Self (no point showing it)
-  if (shooters.length <= 1 && shooters[0] === 'Self') {
-    card.style.display = 'none';
-    return;
-  }
-
+  // Hide card if everyone is Self (no point showing it) — the aggregator
+  // raises this flag so the render logic here stays one-liner.
+  if (agg.isAllSelf) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
-  // Sort: Self first, then by count desc
-  shooters.sort(function(a,b) {
-    if (a === 'Self') return -1;
-    if (b === 'Self') return 1;
-    return counts[b] - counts[a];
-  });
-
-  var maxCnt = Math.max.apply(null, shooters.map(function(s){ return counts[s]; }));
-
   var html = '';
-  shooters.forEach(function(s, i) {
-    var cnt = counts[s];
-    var pct = Math.round(cnt/maxCnt*100);
+  agg.sortedNames.forEach(function(s) {
+    var cnt = agg.counts[s];
+    var pct = Math.round(cnt / agg.maxCount * 100);
     var barClr = s === 'Self'
       ? 'linear-gradient(90deg,#5a7a30,#7adf7a)'
       : 'linear-gradient(90deg,#c8a84b,#f0c870)';
@@ -7287,47 +7268,31 @@ function buildShooterStats(entries) {
       + '<div class="bar-cnt">'+cnt+'</div>'
       + '</div>';
   });
-
   chart.innerHTML = html;
 }
 
 function buildDestinationStats(entries) {
   var card  = document.getElementById('destination-card');
   var chart = document.getElementById('destination-chart');
+  var agg = aggregateDestinationStats(entries);
 
-  var counts = {};
-  entries.forEach(function(e) {
-    if (e.destination) counts[e.destination] = (counts[e.destination]||0) + 1;
-  });
-
-  var dests = Object.keys(counts);
-
-  // Hide if no entries have a destination set
-  if (dests.length === 0) {
-    card.style.display = 'none';
-    return;
-  }
-
+  if (agg.sortedNames.length === 0) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
-  // Sort by count descending
-  dests.sort(function(a,b) { return counts[b] - counts[a]; });
-
-  var maxCnt = Math.max.apply(null, dests.map(function(d){ return counts[d]; }));
   var destColors = {
     'Self / personal use': 'linear-gradient(90deg,#5a7a30,#7adf7a)',
-    'Game dealer': 'linear-gradient(90deg,#c8a84b,#f0c870)',
-    'Friend / family': 'linear-gradient(90deg,#1565c0,#42a5f5)',
-    'Stalking client': 'linear-gradient(90deg,#6a1b9a,#ab47bc)',
-    'Estate / landowner': 'linear-gradient(90deg,#00695c,#4db6ac)',
-    'Left on hill': 'linear-gradient(90deg,#888,#aaa)',
-    'Condemned': 'linear-gradient(90deg,#c62828,#ef5350)'
+    'Game dealer':         'linear-gradient(90deg,#c8a84b,#f0c870)',
+    'Friend / family':     'linear-gradient(90deg,#1565c0,#42a5f5)',
+    'Stalking client':     'linear-gradient(90deg,#6a1b9a,#ab47bc)',
+    'Estate / landowner':  'linear-gradient(90deg,#00695c,#4db6ac)',
+    'Left on hill':        'linear-gradient(90deg,#888,#aaa)',
+    'Condemned':           'linear-gradient(90deg,#c62828,#ef5350)'
   };
 
   var html = '';
-  dests.forEach(function(d) {
-    var cnt = counts[d];
-    var pct = Math.round(cnt/maxCnt*100);
+  agg.sortedNames.forEach(function(d) {
+    var cnt = agg.counts[d];
+    var pct = Math.round(cnt / agg.maxCount * 100);
     var barClr = destColors[d] || 'linear-gradient(90deg,#5a7a30,#7adf7a)';
     html += '<div class="bar-row">'
       + '<div class="bar-lbl">' + esc(d) + '</div>'
@@ -7335,7 +7300,6 @@ function buildDestinationStats(entries) {
       + '<div class="bar-cnt">'+cnt+'</div>'
       + '</div>';
   });
-
   chart.innerHTML = html;
 }
 
@@ -7344,40 +7308,18 @@ function buildTimeOfDayStats(entries) {
   var chart = document.getElementById('time-chart');
   if (!card || !chart) return;
 
-  var buckets = [
-    { label: 'Dawn (05–07)', min: 5, max: 7, clr: 'linear-gradient(90deg,#f57f17,#ffb74d)' },
-    { label: 'Morning (08–10)', min: 8, max: 10, clr: 'linear-gradient(90deg,#c8a84b,#f0c870)' },
-    { label: 'Midday (11–14)', min: 11, max: 14, clr: 'linear-gradient(90deg,#5a7a30,#7adf7a)' },
-    { label: 'Afternoon (15–17)', min: 15, max: 17, clr: 'linear-gradient(90deg,#1565c0,#42a5f5)' },
-    { label: 'Dusk (18–20)', min: 18, max: 20, clr: 'linear-gradient(90deg,#6a1b9a,#ab47bc)' },
-    { label: 'Night (21–04)', min: -1, max: -1, clr: 'linear-gradient(90deg,#444,#888)' }
-  ];
-  var counts = [0,0,0,0,0,0];
-
-  entries.forEach(function(e) {
-    if (!e.time) return;
-    var h = parseInt(e.time.split(':')[0], 10);
-    if (isNaN(h)) return;
-    var placed = false;
-    for (var i = 0; i < 5; i++) {
-      if (h >= buckets[i].min && h <= buckets[i].max) { counts[i]++; placed = true; break; }
-    }
-    if (!placed) counts[5]++;
-  });
-
-  var total = counts.reduce(function(a,b){ return a+b; }, 0);
-  if (total === 0) { card.style.display = 'none'; return; }
+  var agg = aggregateTimeOfDayStats(entries);
+  if (agg.total === 0) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
-  var maxCnt = Math.max.apply(null, counts);
   var html = '';
-  for (var j = 0; j < buckets.length; j++) {
-    if (counts[j] === 0) continue;
-    var pct = Math.round(counts[j] / maxCnt * 100);
+  for (var j = 0; j < agg.buckets.length; j++) {
+    if (agg.counts[j] === 0) continue;
+    var pct = Math.round(agg.counts[j] / agg.maxCount * 100);
     html += '<div class="bar-row">'
-      + '<div class="bar-lbl">' + buckets[j].label + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+buckets[j].clr+';"></div></div>'
-      + '<div class="bar-cnt">'+counts[j]+'</div>'
+      + '<div class="bar-lbl">' + agg.buckets[j].label + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+agg.buckets[j].clr+';"></div></div>'
+      + '<div class="bar-cnt">'+agg.counts[j]+'</div>'
       + '</div>';
   }
   chart.innerHTML = html;
