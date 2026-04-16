@@ -5,7 +5,7 @@
 // the cache strings (`v7.34`) because they were three separate literals.
 // Bumping triggers the `activate` step to sweep old caches and reload clients
 // via the `controllerchange` path in diary.js.
-const SW_VERSION = '7.44';
+const SW_VERSION = '7.45';
 const STATIC_CACHE  = 'first-light-static-v'  + SW_VERSION;
 const RUNTIME_CACHE = 'first-light-runtime-v' + SW_VERSION;
 
@@ -31,6 +31,7 @@ const PRECACHE_URLS = [
   './modules/svg-icons.mjs',
   './modules/supabase.mjs',
   './modules/weather.mjs',
+  './modules/photos.mjs',
   './privacy.html',
   './manifest.json',
   './manifest-diary.json',

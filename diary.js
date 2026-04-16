@@ -24,6 +24,13 @@ import {
 // findOpenMeteoHourlyIndex and diaryLondonWallMs are not re-imported —
 // they're used only by fetchCullWeather (inside the module) and tests.
 import {
+  CULL_PHOTO_SIGN_EXPIRES,
+  newCullPhotoPath,
+  cullPhotoStoragePath,
+  dataUrlToBlob,
+  compressPhotoFile
+} from './modules/photos.mjs';
+import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
   SVG_FL_IMAGE_OFF, SVG_FL_PIN, SVG_FL_GPS, SVG_FL_PENCIL,
@@ -2247,43 +2254,9 @@ function safeUrl(url) {
   return /^https:\/\//.test(url) ? url : null;
 }
 
-/** Signed URL lifetime for private bucket reads (seconds). */
-var CULL_PHOTO_SIGN_EXPIRES = 86400;
-
-/**
- * Build a collision-free storage path for a new cull photo.
- * Format: "<userId>/<ms>-<rand6>.jpg".
- * Rationale: Date.now() alone collides when two uploads fire in the same
- * millisecond — realistic during offline-queue drain where several photos
- * can upload back-to-back inside a tight loop. Combined with `upsert: true`
- * the losing upload silently overwrites the winner and two cull_entries
- * rows end up pointing at the same file.
- */
-function newCullPhotoPath(userId) {
-  var rand = Math.random().toString(36).slice(2, 8);
-  return userId + '/' + Date.now() + '-' + rand + '.jpg';
-}
-
-/**
- * Storage object path within bucket cull-photos: "userId/file.jpg".
- * Accepts legacy full Supabase URLs (public or signed) or stored path.
- */
-function cullPhotoStoragePath(photo_url) {
-  if (!photo_url || typeof photo_url !== 'string') return null;
-  var s = photo_url.trim();
-  if (!s) return null;
-  if (!/^https?:\/\//i.test(s)) {
-    if (/^[0-9a-f-]{36}\//i.test(s)) return s;
-    return null;
-  }
-  var m = s.match(/cull-photos\/([^?]+)/i);
-  if (!m) return null;
-  try {
-    return decodeURIComponent(m[1]);
-  } catch (e) {
-    return m[1];
-  }
-}
+// Photo storage helpers (CULL_PHOTO_SIGN_EXPIRES, newCullPhotoPath,
+// cullPhotoStoragePath) moved to modules/photos.mjs — see Commit G in
+// MODULARISATION-PLAN.md. Imported at the top of this file.
 
 /** After loadEntries: fill _photoDisplayUrl for list/detail (private bucket). */
 async function resolveCullPhotoDisplayUrls(entries) {
@@ -2998,41 +2971,25 @@ function handlePhoto(input) {
   revokeBlobPreviewUrl(photoPreviewUrl);
   photoPreviewUrl = null;
 
-  // Compress image via canvas before storing
-  var reader = new FileReader();
-  reader.onload = function(ev) {
-    var img = new Image();
-    img.onload = function() {
-      // Target max 800px on longest side, JPEG quality 0.75
-      var MAX = 800;
-      var w = img.width;
-      var h = img.height;
-      if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
-      else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+  // Compression (FileReader → Image → Canvas → Blob at 800px max / 0.75 JPEG)
+  // lives in modules/photos.mjs so the offline-queue code can share it and so
+  // the pipeline is testable in isolation. Everything below the compress call
+  // is DOM state that must stay in diary.js.
+  compressPhotoFile(file).then(function(res) {
+    photoFile = res.file;
+    photoPreviewUrl = res.previewUrl;
 
-      var canvas = document.createElement('canvas');
-      canvas.width  = w;
-      canvas.height = h;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
+    var slot = document.getElementById('photo-slot');
+    slot.className = 'photo-slot filled';
+    slot.innerHTML = '<div class="diary-img-skeleton diary-img-skeleton-slot" aria-hidden="true"></div><img class="diary-img diary-img-fade" src="' + esc(photoPreviewUrl) + '" alt=""><button type="button" class="photo-slot-rm" data-fl-action="remove-photo">✕</button>';
+    diaryWireDiaryImages(slot);
+    document.getElementById('photo-rm-btn').style.display = 'block';
 
-      canvas.toBlob(function(blob) {
-        photoFile = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-        photoPreviewUrl = URL.createObjectURL(blob);
-
-        var slot = document.getElementById('photo-slot');
-        slot.className = 'photo-slot filled';
-        slot.innerHTML = '<div class="diary-img-skeleton diary-img-skeleton-slot" aria-hidden="true"></div><img class="diary-img diary-img-fade" src="' + esc(photoPreviewUrl) + '" alt=""><button type="button" class="photo-slot-rm" data-fl-action="remove-photo">✕</button>';
-        diaryWireDiaryImages(slot);
-        document.getElementById('photo-rm-btn').style.display = 'block';
-
-        var kb = Math.round(photoFile.size / 1024);
-        showToast('📷 Photo ready · ' + kb + ' KB');
-      }, 'image/jpeg', 0.75);
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+    showToast('📷 Photo ready · ' + res.kb + ' KB');
+  }).catch(function(err) {
+    console.warn('Photo compress failed:', err);
+    showToast('⚠️ Photo failed to load');
+  });
 }
 
 function removePhoto() {
@@ -6859,16 +6816,8 @@ function openOfflineDb() {
   });
 }
 
-function dataUrlToBlob(dataUrl) {
-  var arr = (dataUrl || '').split(',');
-  var mimeMatch = arr[0] ? arr[0].match(/:(.*?);/) : null;
-  if (!mimeMatch || !arr[1]) throw new Error('Malformed photo data URL');
-  var mime = mimeMatch[1];
-  var bstr = atob(arr[1]);
-  var u8arr = new Uint8Array(bstr.length);
-  for (var i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
-  return new Blob([u8arr], { type: mime });
-}
+// dataUrlToBlob() moved to modules/photos.mjs — imported at the top of this
+// file. Still used at its 2 offline-queue call sites unchanged.
 
 function saveOfflinePhotoBlob(photoId, blob) {
   return openOfflineDb().then(function(db) {
