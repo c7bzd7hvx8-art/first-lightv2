@@ -44,6 +44,14 @@ Tests: 31/31 green. No linter errors. Awaiting browser smoke-test before Commit 
 
 Tests: 31/31 green. No linter errors.
 
+**Commit C — `modules/sw-bridge.mjs`.**
+
+- **`modules/sw-bridge.mjs`** (NEW) — SW registration + update-banner wiring extracted verbatim from diary.js L2034-2113 (80 lines). Single exported `initSwBridge()` entry point; module-internal helpers (`showSwUpdateBar`, `swUpdateBarShown` flag) are no longer visible to diary.js. Idempotent — a second `initSwBridge()` call is a no-op, so hot reloads or accidental double-init don't attach duplicate listeners.
+- **`diary.js`** — added `import { initSwBridge } from './modules/sw-bridge.mjs';`, deleted the 80-line SW block, replaced with a single `initSwBridge();` call. The block was entirely self-contained so no other call sites needed updating. Net -75 lines.
+- **`sw.js`** — `./modules/sw-bridge.mjs` added to `PRECACHE_URLS`. Bumped to `v7.40`.
+
+Tests: 31/31 green. No linter errors.
+
 ---
 
 ## 2026-04-16 — Audit round-2 sweep (11 items, all closed)
