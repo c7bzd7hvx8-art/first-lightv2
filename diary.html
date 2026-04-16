@@ -1093,6 +1093,14 @@
   <button class="di-lightbox-close" type="button" data-fl-action="close-photo-lb" aria-label="Close">×</button>
   <img id="photo-lightbox-img" class="di-lightbox-img" src="" alt="">
 </div>
-<script src="diary.js"></script>
+<!--
+  diary.js is an ES module (see MODULARISATION-PLAN.md). `type="module"` makes
+  it defer by default — it runs after DOM parse, which is why any previous
+  `document.addEventListener('DOMContentLoaded', …)` inside is now wrapped in
+  `flOnReady()` so it still fires whether we're a classic script or a module.
+  Vendor libs above are still classic scripts and attach their globals (L,
+  supabase, jspdf) before this module runs, so we read them as window.*.
+-->
+<script type="module" src="diary.js"></script>
 </body>
 </html>

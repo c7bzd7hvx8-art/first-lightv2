@@ -4,6 +4,36 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — Modularisation Phase 1 begun — Commit A: diary.js → ES module
+
+Working on branch `feat/modularise-phase-1` (main stays pristine). Backup = origin/main on GitHub.
+
+**§9 open-question answers (locked in before first extraction):**
+
+- **Tests** — flat `tests/*.test.mjs` (keep current pattern; no `tests/modules/` sub-tree).
+- **Extension** — `.mjs` throughout `modules/` to match `lib/fl-pure.mjs` and stay visually distinct from classic scripts.
+- **Dev server** — `npx serve` (Node already installed; Python stub on this machine launches the Microsoft Store).
+- **Release cadence** — after every module if smoke-test green.
+- **Browser target** — ES2020+ (Chrome 89+, Safari 15+, Firefox 89+). **No top-level await** — it pushes the target to Safari 15+ / Chrome 89+ and isn't needed for anything we're doing.
+
+**Commit A — pure cutover, no extraction:**
+
+- **`diary.html`** — `<script src="diary.js">` → `<script type="module" src="diary.js">`. Comment above explains what changes semantically (deferred execution, no `window.` attachment of `var`s). Vendor libs (Leaflet / MarkerCluster / Supabase / jsPDF) stay as classic scripts in `<head>` — they run first and attach `window.L`, `window.supabase`, `window.jspdf` before the module executes.
+- **`diary.js`** — added `flOnReady(fn)` helper. Under `type="module"` the file is deferred, so DOMContentLoaded has already fired by the time we register listeners; `flOnReady` runs `fn` immediately if `document.readyState !== 'loading'`, otherwise falls back to the listener. Both `document.addEventListener('DOMContentLoaded', ...)` sites (form-dirty tracker at L1443 and the main init IIFE at L2005) now call `flOnReady(...)`.
+- **`sw.js`** — cache bump to `v7.37` so the script-tag change propagates on next visit.
+
+**Pre-flight checks (all green):**
+
+- No module-level `this.` references (would change from `window` to `undefined` under modules).
+- No external code reads `window.currentUser` / `window.allEntries` / `window.sb` etc. (`var`s losing `window` attachment is invisible).
+- The only intentional `window.*` bridges (`_summarySeasonLabel`, `_summaryGroundOverride`, `FL_DEBUG`, `__flGlobalErrorInstalled`) use explicit assignment — unaffected by the scope change.
+- `app.js` doesn't reach into `diary.js` globals.
+- CSP `script-src 'self' …` already covers same-origin modules.
+
+Tests: 31/31 green. No linter errors. Awaiting browser smoke-test before Commit B (first real extraction: `modules/clock.mjs`).
+
+---
+
 ## 2026-04-16 — Audit round-2 sweep (11 items, all closed)
 
 Sequential pass through the full re-audit backlog. Risk-ordered — safe infra first, tiny `diary.js` edits next, bigger structural work last. Tests stayed 31/31 green throughout.

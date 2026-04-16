@@ -95,6 +95,20 @@ function flDebugLog(level, label, details) {
   });
 })();
 
+// ── DOM-ready helper ───────────────────────────────────────────
+// Under <script type="module"> the script is deferred; by the time this file
+// runs, DOMContentLoaded has already fired and a plain
+// `document.addEventListener('DOMContentLoaded', fn)` callback would never
+// execute. This helper runs `fn` immediately if the DOM is already parsed,
+// otherwise it behaves like the old listener. Safe under classic-script too.
+function flOnReady(fn) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fn);
+  } else {
+    fn();
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 // CULL PLAN — targets vs actuals
 // ══════════════════════════════════════════════════════════════
@@ -1431,7 +1445,7 @@ function updateFormProgressChip() {
 }
 
 // Mark form dirty on any input change
-document.addEventListener('DOMContentLoaded', function() {
+flOnReady(function() {
   var form = document.getElementById('v-form');
   if (form) {
     form.addEventListener('input', function() { formDirty = true; });
@@ -1993,7 +2007,7 @@ function diaryApplyAuthSession(session) {
 }
 
 // Init on DOM ready
-document.addEventListener('DOMContentLoaded', function() {
+flOnReady(function() {
   (async function() {
   await syncDiaryTrustedUkClock();
   initStatsMoreSection();
