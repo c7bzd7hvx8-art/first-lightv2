@@ -4,6 +4,31 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Launch-readiness blockers #1 + #4: feedback mailto + FAB aria-label
+
+First pass at the launch-readiness blocker list from the scorecard below. Two of the six blockers fit in a single `diary.html` change:
+
+- **Blocker #1 — in-app feedback channel.** Added a "*Send feedback*" link to the diary footer (`diary.html` 677–685) pointing at `mailto:firstlightdeer@gmail.com?subject=Cull%20Diary%20beta%20feedback`. Uses the same footer link styling as Diary Guide / Privacy Policy, with a small envelope SVG. Beta testers now have a one-tap path to report problems; the pre-filled subject makes triage easier.
+- **Blocker #4 — FAB a11y.** Added `aria-label="New entry"` to the primary `+` FAB at `diary.html` 155. Screen readers previously announced it as "plus, button" with no context.
+
+### Changes
+- `diary.html` — one new footer link, one aria-label attribute (~2 lines net).
+- `sw.js` — `SW_VERSION` 7.66 → 7.67 so existing installs pick up the new markup.
+
+### Not done in this pass
+- Auth-screen (`v-auth`) does not yet carry the feedback link — keeping the auth surface minimal for now. If beta testers surface sign-up issues it can be added there with a `mailto:` tweak.
+- No mailto prefill of app version / SW version in the body. Can add later if triage needs it.
+
+### Remaining launch blockers (from the scorecard)
+2. Minimal Terms of Use page.
+3. Privacy policy third-party refresh (Mapbox, OS, Esri/ArcGIS, timeapi.io, worldtimeapi.org) + retention line.
+5. Beta-gate decision (recommendation: keep open registration, don't promote URL).
+6. Lightweight error logger (`window.onerror` + `unhandledrejection` → Supabase `app_errors` table).
+
+Tests still 199/199; no module code touched.
+
+---
+
 ## 2026-04-17 — Launch-readiness scorecard (pre-beta)
 
 Triggered by: "*Would you advise conducting a comprehensive audit…?*" → re-scoped to **launch-readiness review** given the app is not yet public. First users are "*a tight beta group of stalkers*" and the ship date is "*when ready*". This is a decision-log entry, not a code change — no SW bump.
