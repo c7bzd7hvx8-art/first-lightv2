@@ -4,6 +4,23 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Remove "beta" language from user-facing copy
+
+User feedback after the Terms of Use commit: "*do not say anything about app being beta, remove references*". All user-visible references to the word *beta* have been stripped:
+
+- `terms.html` summary box: "*It is currently in beta — things may change, break, or be withdrawn*" → "*Features may change or be withdrawn at any time, and you are responsible for the accuracy and legality of the records you keep in it*". Same substantive disclaimer, neutral framing.
+- `terms.html` Section 3 heading **"Beta software"** → **"Service availability and changes"**, with lead-in "*First Light is currently in a closed or limited beta*" → "*First Light is an evolving, independently developed service*". The four-bullet list (features may change, bugs possible, features may be removed, don't rely as sole record) is preserved verbatim — it's the legally useful part.
+- `diary.html` footer mailto: `subject=Cull%20Diary%20beta%20feedback` → `subject=Cull%20Diary%20feedback`.
+- `sw.js`: `SW_VERSION` 7.69 → 7.70 so existing installs pick up the new wording and the new mailto.
+
+Scope note: this only changes **user-facing** copy. `PROJECT-LOG.md` entries above — which refer to the app being in a tight beta group of stalkers — remain as dated-history decision logs and are not rewritten.
+
+Verified: `rg -i beta` across `*.html *.js *.css *.mjs` returns zero matches after the change.
+
+Tests still 199/199.
+
+---
+
 ## 2026-04-17 — Launch-readiness blocker #2: Terms of Use page
 
 Fourth launch-readiness blocker shipped — and the last of the pure-content pair. A new `terms.html` now sits alongside `privacy.html` and is linked from every place a user could be expected to look: the **auth consent checkbox** in the diary, the **diary footer** in the Stats/account view, the **marketing site footer** on `index.html`, and the **Copyright** section of the privacy policy. The file is pre-cached by the service worker so it's available offline immediately after the next SW update.
