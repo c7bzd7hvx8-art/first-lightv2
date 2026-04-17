@@ -1706,10 +1706,28 @@ async function saveNameEdit() {
     //    deployment we swallow and toast success anyway, because the
     //    primary identity write (step 1) has landed.
     try {
-      await sb.from('syndicate_members')
+      var syndRes = await sb.from('syndicate_members')
         .update({ display_name: v.value })
         .eq('user_id', currentUser.id);
-    } catch (_syndErr) { /* column missing / network — non-fatal */ }
+      if (syndRes && syndRes.error) {
+        var syndMsg = String(syndRes.error.message || '').toLowerCase();
+        // Older deployments may not have this column/table yet; keep the
+        // primary profile-name update successful in that case. For all other
+        // failures surface an error so we don't claim full success while
+        // syndicate labels remain stale.
+        var missingSchema = (
+          syndMsg.indexOf('display_name') >= 0 && syndMsg.indexOf('column') >= 0
+        ) || (
+          syndMsg.indexOf('syndicate_members') >= 0 && syndMsg.indexOf('relation') >= 0
+        );
+        if (!missingSchema) throw syndRes.error;
+      }
+    } catch (_syndErr) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('saveNameEdit syndicate_members sync:', _syndErr);
+      }
+      throw new Error('Name updated, but syndicate labels could not be refreshed. Please try again.');
+    }
 
     // 3. Repaint the pieces of UI that bake the name in.
     var nm  = document.getElementById('account-name');
@@ -1786,9 +1804,13 @@ async function savePasswordChange() {
       password: cur.value,
     });
     if (reauth.error) {
-      // Supabase returns 'Invalid login credentials' for a bad password.
-      // Translate to something less alarming (the user IS logged in).
-      throw new Error('Current password is incorrect.');
+      var reauthMsg = String(reauth.error.message || '').toLowerCase();
+      // Bad current password is the common expected error.
+      if (reauthMsg.indexOf('invalid login credentials') >= 0) {
+        throw new Error('Current password is incorrect.');
+      }
+      // Anything else is usually transport/session trouble, not user typo.
+      throw new Error('Could not verify your current password. Check connection and try again.');
     }
 
     // 2. Update to the new password.
@@ -3296,6 +3318,7 @@ function setCalibreValue(val) {
   var custom = document.getElementById('f-calibre');
   if (!val) { 
     if (sel) sel.value = ''; 
+    if (sel) sel.classList.remove('has-val');
     if (custom) { custom.value = ''; custom.style.display = 'none'; }
     return; 
   }
@@ -3309,8 +3332,10 @@ function setCalibreValue(val) {
   if (!matched) {
     // Use custom
     if (sel) sel.value = '__custom__';
+    if (sel) sel.classList.add('has-val');
     if (custom) { custom.value = val; custom.style.display = 'block'; }
   } else {
+    if (sel) sel.classList.add('has-val');
     if (custom) { custom.value = val; custom.style.display = 'none'; }
   }
 }

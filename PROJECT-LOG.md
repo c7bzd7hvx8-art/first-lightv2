@@ -4,6 +4,23 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Bugfix pass: profile-save accuracy, password error messaging, calibre field state
+
+Focused bug-hunt follow-up fixing three correctness issues found in `diary.js`.
+
+- `diary.js` — `saveNameEdit()` now inspects the `syndicate_members` update response for `error` (not just thrown exceptions).  
+  Before: we could show "Display name updated" even if syndicate display-name sync failed silently.  
+  Now: non-schema failures surface as an error message so we don't claim full success while team labels remain stale. We still tolerate missing-schema cases on older deployments.
+- `diary.js` — `savePasswordChange()` now distinguishes credential failure vs transport/session failure when re-authing current password:  
+  - bad password → "Current password is incorrect."  
+  - other auth/network failures → "Could not verify your current password. Check connection and try again."
+- `diary.js` — `setCalibreValue()` now keeps the select's `.has-val` class in sync for programmatic set/reset paths (new/edit form opens), so border/background state matches whether a value is present.
+- `sw.js` — `SW_VERSION` `7.76 → 7.77` so cached installs receive the bugfixes immediately.
+
+No schema or API contract changes; this is behaviour/UX correctness only.
+
+---
+
 ## 2026-04-17 — Main site footer: add feedback mailto link
 
 Small launch-polish follow-up: added a direct email feedback route on the main site footer so users can reach us without entering the diary first.
