@@ -4,6 +4,35 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — Modularisation Phase 2 — Commit K: game dealer + consignment Trained Hunter declarations
+
+Third Phase-2 commit on `feat/modularise-phase-2`. Moves both Reg (EC) 853/2004 Trained Hunter declarations (per-carcass + per-consignment) into `modules/pdf.mjs`, introduces a shared `resolveHunterIdentity` helper, and de-duplicates the consignment PDF's green-filled header row.
+
+- **`modules/pdf.mjs`** (+360 lines) — two new builders + one private helper:
+  - `buildGameDealerDeclarationPDF({ entry, user })` — per-carcass declaration. Keeps the AHVLA gralloch-checklist rendering (structured-codes → legacy-notes fall-through). Returns `{ filename }` on success.
+  - `buildConsignmentDealerDeclarationPDF({ entries, user })` — per-consignment declaration. Does the "Left on hill" exclusion + chronological sort internally (non-mutating clone), and reports `excluded` count on the returned object so the PDF can show the "(N excluded…)" note under the summary strip.
+    - Return shape: `null` for empty, `{ status: 'all-excluded', excluded }` for all-filtered-out, `{ filename, count, excluded }` on success. Caller drives the specific toast message + select-mode exit.
+  - `resolveHunterIdentity(user)` — private helper. Returns `{ hunterName, accountEmail }` with try/catch for malformed user objects (a broken Supabase session shouldn't kill an export at "user clicks download"). Used by both declaration builders.
+  - `drawConsignmentHeader(atY)` — inner closure inside `buildConsignmentDealerDeclarationPDF`. The initial-header and page-break-header draw identical 14-line green-filled rectangles; previously they were copy-pasted inline and had started to drift (different setFontSize ordering after the fill). Single source of truth now.
+  - **Bonus fix**: both the `exportConsignmentDealerPdf` legacy code and its module successor now do a `.slice()` before sort, so the caller's entries array is no longer mutated.
+- **`diary.js`** — two functions collapsed to shims:
+  - `exportGameDealerDeclaration(id)` → 5-line shim that resolves the entry via `allEntries.find(id)` then delegates.
+  - `exportConsignmentDealerPdf()` → 20-line shim. Keeps the empty-selection / all-excluded / success-toast fan-out + the `exitSelectMode()` call (UI concern, stays in diary.js).
+  - Added imports from `./modules/pdf.mjs` for the two new builders.
+  - **Net: −294 lines in `diary.js`** (git stat: 313 - / 19 +).
+- **`sw.js`** — `SW_VERSION` bumped `7.48` → `7.49`.
+- **`tests/pdf.test.mjs`** (+9 assertions → 37 in this file):
+  - `buildGameDealerDeclarationPDF`: null-entry guard, filename convention (species slugged + date), missing-species fallback to "entry", structured-none + legacy-notes branches don't throw.
+  - `buildConsignmentDealerDeclarationPDF`: empty guard, all-excluded status, success-with-excluded count, multi-day vs single-day filename, non-mutation regression guard.
+
+**Tests: 126/126 green (was 117; +9).** No lint errors.
+
+**Phase 2 cumulative so far** (Commits I + J + K): `diary.js` down **−553 lines** out of the ~1,500 PDF target (≈37%). Commit L is the final big one: `exportSeasonSummary` + `exportSyndicateSeasonSummaryPdf` (~680 lines), plus a `fmtEntryDate*` dedupe.
+
+Pending browser smoke-test before Commit L.
+
+---
+
 ## 2026-04-16 — Modularisation Phase 2 — Commit J: larder book + syndicate list/larder PDFs + shared `drawTableHeader`
 
 Second Phase-2 commit on `feat/modularise-phase-2`. Three more PDFs moved into `modules/pdf.mjs`, plus the shared table-header helper.

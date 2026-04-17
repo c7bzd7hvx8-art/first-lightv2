@@ -29,6 +29,8 @@ import {
   buildLarderBookPDF,
   buildSyndicateListPDF,
   buildSyndicateLarderBookPDF,
+  buildGameDealerDeclarationPDF,
+  buildConsignmentDealerDeclarationPDF,
 } from '../modules/pdf.mjs';
 
 // ── userProfileDisplayName ─────────────────────────────────────────────────
@@ -362,5 +364,129 @@ test('buildSyndicateLarderBookPDF: falls back to "Syndicate" when name missing',
       rows: [{ species: 'Roe', sex: 'male', date: '2025-10-15' }],
     });
     assert.equal(res.filename, 'team-larder-book-syndicate-2025-26.pdf');
+  } finally { restore(); }
+});
+
+// ── buildGameDealerDeclarationPDF (Commit K) ────────────────────────────────
+test('buildGameDealerDeclarationPDF: null for missing entry', () => {
+  const restore = installJsPdfStub();
+  try {
+    assert.equal(buildGameDealerDeclarationPDF({ entry: null, user: null }), null);
+    assert.equal(buildGameDealerDeclarationPDF({ entry: undefined, user: null }), null);
+  } finally { restore(); }
+});
+
+test('buildGameDealerDeclarationPDF: filename includes lowercased species + date', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildGameDealerDeclarationPDF({
+      entry: { species: 'Red Deer', sex: 'male', date: '2025-10-15' },
+      user: null,
+    });
+    assert.equal(res.filename, 'declaration-red-deer-2025-10-15.pdf');
+  } finally { restore(); }
+});
+
+test('buildGameDealerDeclarationPDF: missing species → "entry" slug', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildGameDealerDeclarationPDF({
+      entry: { sex: 'male', date: '2025-10-15' },
+      user: null,
+    });
+    assert.equal(res.filename, 'declaration-entry-2025-10-15.pdf');
+  } finally { restore(); }
+});
+
+test('buildGameDealerDeclarationPDF: handles structured "none" abnormalities + free-text legacy fallback', () => {
+  const restore = installJsPdfStub();
+  try {
+    // Structured none — the PDF shows "✓ No abnormalities observed". We can't
+    // easily inspect the rendered text from the stub (no x-scanning), so we
+    // just verify these two branches don't throw. The rendering shape is
+    // covered by manual smoke-test.
+    const r1 = buildGameDealerDeclarationPDF({
+      entry: { species: 'Roe', sex: 'male', date: '2025-10-15', abnormalities: ['none'] },
+      user: null,
+    });
+    const r2 = buildGameDealerDeclarationPDF({
+      entry: { species: 'Roe', sex: 'male', date: '2025-10-15', notes: 'Legacy note text' },
+      user: null,
+    });
+    assert.ok(r1 && r1.filename);
+    assert.ok(r2 && r2.filename);
+  } finally { restore(); }
+});
+
+// ── buildConsignmentDealerDeclarationPDF (Commit K) ─────────────────────────
+test('buildConsignmentDealerDeclarationPDF: null for no entries passed', () => {
+  const restore = installJsPdfStub();
+  try {
+    assert.equal(buildConsignmentDealerDeclarationPDF({ entries: [], user: null }), null);
+    assert.equal(buildConsignmentDealerDeclarationPDF({ entries: null, user: null }), null);
+  } finally { restore(); }
+});
+
+test('buildConsignmentDealerDeclarationPDF: all "Left on hill" → status: all-excluded', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildConsignmentDealerDeclarationPDF({
+      entries: [
+        { species: 'Roe', sex: 'male', date: '2025-10-15', destination: 'Left on hill' },
+        { species: 'Roe', sex: 'male', date: '2025-10-16', destination: 'LEFT ON HILL' },
+      ],
+      user: null,
+    });
+    assert.deepEqual(res, { status: 'all-excluded', excluded: 2 });
+  } finally { restore(); }
+});
+
+test('buildConsignmentDealerDeclarationPDF: excluded count reported alongside success', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildConsignmentDealerDeclarationPDF({
+      entries: [
+        { species: 'Roe', sex: 'male', date: '2025-10-15', destination: 'Own use' },
+        { species: 'Roe', sex: 'male', date: '2025-10-16', destination: 'Left on hill' },
+        { species: 'Roe', sex: 'male', date: '2025-10-17', destination: 'Dealer' },
+      ],
+      user: null,
+    });
+    assert.equal(res.count, 2);
+    assert.equal(res.excluded, 1);
+  } finally { restore(); }
+});
+
+test('buildConsignmentDealerDeclarationPDF: filename uses date range for multi-day, single date for single-day', () => {
+  const restore = installJsPdfStub();
+  try {
+    // Multi-day (after sort, earliest → latest)
+    const multi = buildConsignmentDealerDeclarationPDF({
+      entries: [
+        { species: 'Roe', sex: 'male', date: '2025-10-20', destination: 'Dealer' },
+        { species: 'Roe', sex: 'male', date: '2025-10-05', destination: 'Dealer' },
+      ],
+      user: null,
+    });
+    assert.equal(multi.filename, 'consignment-declaration-2025-10-05-to-2025-10-20.pdf');
+    // Single-day: no range suffix.
+    const single = buildConsignmentDealerDeclarationPDF({
+      entries: [{ species: 'Roe', sex: 'male', date: '2025-10-15', destination: 'Dealer' }],
+      user: null,
+    });
+    assert.equal(single.filename, 'consignment-declaration-2025-10-15.pdf');
+  } finally { restore(); }
+});
+
+test('buildConsignmentDealerDeclarationPDF: does NOT mutate the caller\'s array', () => {
+  const restore = installJsPdfStub();
+  try {
+    const input = [
+      { species: 'Roe', sex: 'male', date: '2025-10-20', destination: 'Dealer' },
+      { species: 'Roe', sex: 'male', date: '2025-10-05', destination: 'Dealer' },
+    ];
+    const snapshot = input.map(e => e.date);
+    buildConsignmentDealerDeclarationPDF({ entries: input, user: null });
+    assert.deepEqual(input.map(e => e.date), snapshot, 'input order must be preserved');
   } finally { restore(); }
 });

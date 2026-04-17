@@ -43,14 +43,16 @@ import {
   buildLarderBookPDF,
   buildSyndicateListPDF,
   buildSyndicateLarderBookPDF,
+  buildGameDealerDeclarationPDF,
+  buildConsignmentDealerDeclarationPDF,
   syndicateFileSlug as flSyndicateFileSlug,
   userProfileDisplayName as flUserProfileDisplayName
 } from './modules/pdf.mjs';
-// Phase-2 / Commits I–J: scaffold + 5 PDF exports live in pdf.mjs.
-// Remaining 5 PDFs (game dealer, consignment, season summary x2) stay in
-// diary.js for now — they depend on globals (currentUser, allEntries,
-// currentSyndicate) we'll inject via opts in Commits K → L.
-// See MODULARISATION-PLAN.md.
+// Phase-2 / Commits I–K: 7 PDF exports live in pdf.mjs.
+// Remaining 3 PDFs (exportSeasonSummary, exportSyndicateSeasonSummaryPdf,
+// exportPDF-shim) stay in diary.js for now — season summaries are the
+// biggest chunk (~680 lines) and land in Commit L with a dedupe of the
+// `fmtEntryDate*` helpers. See MODULARISATION-PLAN.md.
 import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
@@ -5146,120 +5148,11 @@ function exportSyndicateLarderBookPDF(syndicate, season, rows) {
 }
 
 function exportGameDealerDeclaration(id) {
+  // Thin shim over modules/pdf.mjs → buildGameDealerDeclarationPDF.
   var e = allEntries.find(function(x){ return x.id === id; });
   if (!e) return;
-
-  var hunterName = '';
-  var accountEmail = '';
-  try {
-    hunterName = userProfileDisplayName();
-    accountEmail = (currentUser && currentUser.email) ? String(currentUser.email).trim() : '';
-  } catch (_) {}
-
-  var doc = new jspdf.jsPDF();
-  var pageW = doc.internal.pageSize.getWidth();
-  var cx = pageW / 2;
-
-  doc.setFontSize(18); doc.setFont(undefined,'bold');
-  doc.text('Trained Hunter Declaration', cx, 24, {align:'center'});
-  doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(100);
-  doc.text('Wild Game — Food Safety Regulations', cx, 32, {align:'center'});
-  doc.setTextColor(0);
-
-  doc.setDrawColor(200); doc.line(14, 38, pageW - 14, 38);
-
-  var fields = [
-    ['Species', e.species || ''],
-    ['Sex', sexLabel(e.sex, e.species)],
-    ['Date of kill', e.date || ''],
-    ['Time', e.time || ''],
-    ['Location', e.location_name || ''],
-    ['Ground', e.ground || ''],
-    ['Tag / carcass number', e.tag_number || ''],
-    ['Carcass weight (kg)', hasValue(e.weight_kg) ? String(e.weight_kg) : ''],
-    ['Age class', e.age_class || ''],
-    ['Calibre', e.calibre || ''],
-    ['Shot placement', e.shot_placement || ''],
-    ['Destination', e.destination || '']
-  ];
-
-  var y = 48;
-  doc.setFontSize(10);
-  fields.forEach(function(f) {
-    doc.setFont(undefined,'bold'); doc.text(f[0] + ':', 20, y);
-    doc.setFont(undefined,'normal'); doc.text(f[1], 80, y);
-    y += 8;
-  });
-
-  y += 6;
-  doc.setFontSize(10); doc.setFont(undefined, 'bold');
-  doc.text('Gralloch inspection (AHVLA trained-hunter checklist):', 20, y);
-  doc.setFont(undefined, 'normal'); y += 8;
-  // Structured list — each checklist code on its own line so a dealer /
-  // inspector can see at a glance what was observed. Falls back to the
-  // legacy "notes as abnormalities" behaviour for entries pre-dating the
-  // abnormalities columns.
-  var abnormCodes = Array.isArray(e.abnormalities) ? e.abnormalities : null;
-  var abnormOther = e.abnormalities_other || '';
-  var hasStructured = (abnormCodes && abnormCodes.length > 0) || abnormOther;
-  if (hasStructured) {
-    if (abnormCodes && abnormCodes.length === 1 && abnormCodes[0] === 'none') {
-      doc.text('✓ No abnormalities observed at gralloch.', 20, y);
-      y += 7;
-      if (abnormOther) {
-        var altLines = doc.splitTextToSize('Additional note: ' + abnormOther, pageW - 40);
-        doc.text(altLines, 20, y);
-        y += altLines.length * 6;
-      }
-    } else if (abnormCodes && abnormCodes.length) {
-      abnormCodes.filter(function(c) { return c !== 'none'; }).forEach(function(code) {
-        doc.text('• ' + (ABNORMALITY_LABEL_BY_CODE[code] || code), 22, y);
-        y += 6;
-      });
-      if (abnormOther) {
-        var oLines = doc.splitTextToSize('• Other: ' + abnormOther, pageW - 40);
-        doc.text(oLines, 22, y);
-        y += oLines.length * 6;
-      }
-    } else {
-      // Only free-text "other" was provided
-      var soloLines = doc.splitTextToSize('• ' + abnormOther, pageW - 40);
-      doc.text(soloLines, 22, y);
-      y += soloLines.length * 6;
-    }
-    y += 6;
-  } else {
-    // Legacy entries: no structured data captured. Fall back to notes as a
-    // pragmatic stand-in so an older declaration still reads correctly.
-    var legacy = e.notes ? e.notes.slice(0, 500) : 'Not recorded at gralloch';
-    var splitNotes = doc.splitTextToSize(legacy, pageW - 40);
-    doc.text(splitNotes, 20, y);
-    y += splitNotes.length * 6 + 6;
-  }
-  y += 6;
-
-  doc.setDrawColor(200); doc.line(14, y, pageW - 14, y); y += 16;
-
-  doc.setFontSize(10);
-  doc.text('I, the undersigned trained hunter, declare that I have examined this carcass and', 20, y); y += 7;
-  doc.text('the viscera at the time of gralloching and found no abnormalities other than', 20, y); y += 7;
-  doc.text('those noted above.', 20, y); y += 18;
-
-  doc.text('Trained hunter name: ' + (hunterName || '________________________'), 20, y); y += 10;
-  if (accountEmail && !hunterName) {
-    doc.setFontSize(8); doc.setTextColor(120);
-    doc.text('First Light account (reference): ' + accountEmail, 20, y);
-    doc.setFontSize(10); doc.setTextColor(0);
-    y += 8;
-  }
-  doc.text('Signature: ___________________________', 20, y);
-  doc.text('Date: _______________', 130, y); y += 18;
-
-  doc.setFontSize(7); doc.setTextColor(150);
-  doc.text('Produced by First Light Cull Diary — firstlightdeer.co.uk', cx, y, {align:'center'});
-
-  doc.save('declaration-' + (e.species || 'entry').replace(/\s+/g, '-').toLowerCase() + '-' + e.date + '.pdf');
-  showToast('✅ Game dealer declaration PDF downloaded');
+  var res = buildGameDealerDeclarationPDF({ entry: e, user: currentUser });
+  if (res) showToast('✅ Game dealer declaration PDF downloaded');
 }
 
 /**
@@ -5274,209 +5167,24 @@ function exportGameDealerDeclaration(id) {
  * that never entered the larder cannot be declared to a game dealer.
  */
 function exportConsignmentDealerPdf() {
+  // Thin shim over modules/pdf.mjs → buildConsignmentDealerDeclarationPDF.
+  // The module handles "Left on hill" exclusion + chronological sort
+  // (non-mutating — was in-place on the caller's array in the legacy code).
   if (!flSelection.ids || flSelection.ids.size === 0) {
     showToast('⚠️ No entries selected');
     return;
   }
-
   var picked = allEntries.filter(function(e) { return flSelection.ids.has(e.id); });
-  var excluded = 0;
-  var entries = picked.filter(function(e) {
-    var d = (e.destination || '').toLowerCase();
-    if (d === 'left on hill') { excluded++; return false; }
-    return true;
-  });
-
-  if (entries.length === 0) {
+  var res = buildConsignmentDealerDeclarationPDF({ entries: picked, user: currentUser });
+  if (!res) {
+    showToast('⚠️ No entries selected');
+    return;
+  }
+  if (res.status === 'all-excluded') {
     showToast('⚠️ All selected entries are marked "Left on hill" — not eligible for a dealer declaration');
     return;
   }
-
-  // Stable order: oldest first within the consignment — reads as a delivery manifest.
-  entries.sort(function(a, b) {
-    return (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '');
-  });
-
-  var hunterName = '';
-  var accountEmail = '';
-  try {
-    hunterName = userProfileDisplayName();
-    accountEmail = (currentUser && currentUser.email) ? String(currentUser.email).trim() : '';
-  } catch (_) {}
-
-  // Landscape A4 — the carcass table needs 9 columns + notes column; portrait
-  // is too narrow to avoid mid-word wraps in Species and Location.
-  var doc = new jspdf.jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
-  var PW = 842, PH = 595;
-  var ML = 24, MR = 24;
-  var UW = PW - ML - MR;
-  var cx = PW / 2;
-
-  // Summary
-  var dateMin = entries[0].date || '';
-  var dateMax = entries[entries.length - 1].date || '';
-  var totalKg = entries.reduce(function(s, e) { return s + (parseFloat(e.weight_kg) || 0); }, 0);
-  var weighedCount = entries.filter(function(e) { return hasValue(e.weight_kg); }).length;
-
-  // Header
-  doc.setFontSize(16); doc.setFont(undefined, 'bold');
-  doc.text('Consignment — Trained Hunter Declaration', cx, 34, { align: 'center' });
-  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
-  doc.text('Wild Game — Food Safety Regulations (Reg (EC) 853/2004)', cx, 46, { align: 'center' });
-  doc.setTextColor(0);
-  doc.setDrawColor(200); doc.line(ML, 52, PW - MR, 52);
-
-  // Summary strip
-  doc.setFontSize(9); doc.setFont(undefined, 'bold');
-  var summary = entries.length + ' carcass' + (entries.length === 1 ? '' : 'es')
-    + '  ·  ' + (weighedCount === entries.length ? Math.round(totalKg) + ' kg total'
-                                                 : Math.round(totalKg) + ' kg (' + weighedCount + ' of ' + entries.length + ' weighed)')
-    + '  ·  ' + (dateMin === dateMax ? dateMin : dateMin + ' → ' + dateMax);
-  doc.text(summary, ML, 66);
-  if (excluded > 0) {
-    doc.setFont(undefined, 'normal'); doc.setTextColor(120); doc.setFontSize(8);
-    doc.text('(' + excluded + ' excluded — destination "Left on hill")', ML, 78);
-    doc.setTextColor(0);
-  }
-
-  // Carcass table
-  var y = excluded > 0 ? 92 : 84;
-  var W_NUM = 24, W_TAG = 54, W_DATE = 56, W_TIME = 34, W_SP = 68, W_SEX = 44,
-      W_WT = 42, W_AGE = 56, W_LOC = 140, W_GRND = 80;
-  var W_NOTES = UW - (W_NUM + W_TAG + W_DATE + W_TIME + W_SP + W_SEX + W_WT + W_AGE + W_LOC + W_GRND);
-  var C = {
-    num: ML,
-    tag: ML + W_NUM,
-    date: ML + W_NUM + W_TAG,
-    time: ML + W_NUM + W_TAG + W_DATE,
-    sp: ML + W_NUM + W_TAG + W_DATE + W_TIME,
-    sex: ML + W_NUM + W_TAG + W_DATE + W_TIME + W_SP,
-    wt: ML + W_NUM + W_TAG + W_DATE + W_TIME + W_SP + W_SEX,
-    age: ML + W_NUM + W_TAG + W_DATE + W_TIME + W_SP + W_SEX + W_WT,
-    loc: ML + W_NUM + W_TAG + W_DATE + W_TIME + W_SP + W_SEX + W_WT + W_AGE,
-    grnd: ML + W_NUM + W_TAG + W_DATE + W_TIME + W_SP + W_SEX + W_WT + W_AGE + W_LOC,
-    notes: ML + W_NUM + W_TAG + W_DATE + W_TIME + W_SP + W_SEX + W_WT + W_AGE + W_LOC + W_GRND
-  };
-
-  function shortAge(a) {
-    if (!a) return '–';
-    var s = String(a).trim();
-    if (/^calf/i.test(s) || /kid|fawn/i.test(s)) return 'Calf';
-    if (/yearling/i.test(s)) return 'Yrl';
-    if (/adult/i.test(s)) return 'Adult';
-    return s.slice(0, 7);
-  }
-
-  // Header row
-  doc.setFontSize(7); doc.setFont(undefined, 'bold'); doc.setFillColor(90, 122, 48); doc.setTextColor(255);
-  doc.rect(ML, y, UW, 14, 'F');
-  doc.text('#', C.num + 4, y + 9);
-  doc.text('TAG', C.tag + 4, y + 9);
-  doc.text('DATE', C.date + 4, y + 9);
-  doc.text('TIME', C.time + 4, y + 9);
-  doc.text('SPECIES', C.sp + 4, y + 9);
-  doc.text('SEX', C.sex + 4, y + 9);
-  doc.text('WT(kg)', C.wt + 4, y + 9);
-  doc.text('AGE', C.age + 4, y + 9);
-  doc.text('LOCATION', C.loc + 4, y + 9);
-  doc.text('GROUND', C.grnd + 4, y + 9);
-  doc.text('GRALLOCH / NOTES (abnormalities if any)', C.notes + 4, y + 9);
-  y += 14;
-  doc.setTextColor(0); doc.setFont(undefined, 'normal'); doc.setFontSize(7);
-
-  entries.forEach(function(e, idx) {
-    // Page break
-    if (y > PH - 120) {
-      doc.addPage();
-      y = 40;
-      doc.setFontSize(7); doc.setFont(undefined, 'bold'); doc.setFillColor(90, 122, 48); doc.setTextColor(255);
-      doc.rect(ML, y, UW, 14, 'F');
-      doc.text('#', C.num + 4, y + 9); doc.text('TAG', C.tag + 4, y + 9);
-      doc.text('DATE', C.date + 4, y + 9); doc.text('TIME', C.time + 4, y + 9);
-      doc.text('SPECIES', C.sp + 4, y + 9); doc.text('SEX', C.sex + 4, y + 9);
-      doc.text('WT(kg)', C.wt + 4, y + 9); doc.text('AGE', C.age + 4, y + 9);
-      doc.text('LOCATION', C.loc + 4, y + 9); doc.text('GROUND', C.grnd + 4, y + 9);
-      doc.text('GRALLOCH / NOTES (abnormalities if any)', C.notes + 4, y + 9);
-      y += 14;
-      doc.setTextColor(0); doc.setFont(undefined, 'normal'); doc.setFontSize(7);
-    }
-    // Zebra
-    if (idx % 2 === 0) { doc.setFillColor(248, 246, 240); doc.rect(ML, y, UW, 14, 'F'); }
-    var rowY = y + 9;
-    doc.text(String(idx + 1), C.num + 4, rowY);
-    doc.text((e.tag_number ? String(e.tag_number) : '–').slice(0, 10), C.tag + 4, rowY);
-    doc.text(e.date || '–', C.date + 4, rowY);
-    doc.text(e.time || '–', C.time + 4, rowY);
-    doc.text((e.species || '–').slice(0, 12), C.sp + 4, rowY);
-    doc.text((sexLabel(e.sex, e.species) || '–').slice(0, 8), C.sex + 4, rowY);
-    doc.text(hasValue(e.weight_kg) ? String(e.weight_kg) : '–', C.wt + 4, rowY);
-    doc.text(shortAge(e.age_class), C.age + 4, rowY);
-    var locTxt = (e.location_name || '–');
-    var locLines = doc.splitTextToSize(locTxt, W_LOC - 6);
-    doc.text(locLines.length > 1 ? locLines[0].slice(0, 30) + '…' : (locLines[0] || '–'), C.loc + 4, rowY);
-    doc.text((e.ground || '–').slice(0, 14), C.grnd + 4, rowY);
-    // Prefer structured abnormalities over free-text notes: shorter, more
-    // uniform, and actually defensible as "trained hunter ticked these boxes".
-    // Codes are expanded to short labels; when the list is long we append "+N"
-    // so the row height stays fixed.
-    var gText;
-    if (Array.isArray(e.abnormalities) && e.abnormalities.length) {
-      if (e.abnormalities.length === 1 && e.abnormalities[0] === 'none') {
-        gText = 'No abnormalities observed';
-      } else {
-        var codes = e.abnormalities.filter(function(c) { return c !== 'none'; });
-        var shown = codes.slice(0, 2).map(function(c) { return ABNORMALITY_LABEL_BY_CODE[c] || c; }).join(', ');
-        if (codes.length > 2) shown += ' (+' + (codes.length - 2) + ')';
-        if (e.abnormalities_other) shown += '; other: ' + e.abnormalities_other;
-        gText = shown;
-      }
-    } else if (e.abnormalities_other) {
-      gText = e.abnormalities_other;
-    } else if (e.notes && e.notes.trim()) {
-      gText = e.notes.trim();
-    } else {
-      gText = 'Not recorded';
-    }
-    var nLines = doc.splitTextToSize(gText, W_NOTES - 6);
-    doc.text(nLines.length > 1 ? nLines[0].slice(0, 40) + '…' : (nLines[0] || '–'), C.notes + 4, rowY);
-    y += 14;
-  });
-
-  // Declaration block
-  if (y > PH - 110) { doc.addPage(); y = 40; }
-  y += 16;
-  doc.setDrawColor(200); doc.line(ML, y, PW - MR, y); y += 16;
-  doc.setFontSize(10); doc.setFont(undefined, 'bold');
-  doc.text('Declaration', ML, y); y += 12;
-  doc.setFont(undefined, 'normal'); doc.setFontSize(9);
-  var declLines = doc.splitTextToSize(
-    'I, the undersigned trained hunter, declare that I examined each carcass listed above ' +
-    'and its viscera at the time of gralloching, and found no abnormalities other than any ' +
-    'recorded in the GRALLOCH / NOTES column for the carcass concerned. The carcasses are ' +
-    'being transferred to the named game dealer as a single consignment.',
-    UW
-  );
-  doc.text(declLines, ML, y); y += declLines.length * 12 + 10;
-
-  doc.setFontSize(10);
-  doc.text('Trained hunter name: ' + (hunterName || '________________________________'), ML, y); y += 14;
-  if (accountEmail && !hunterName) {
-    doc.setFontSize(8); doc.setTextColor(120);
-    doc.text('First Light account (reference): ' + accountEmail, ML, y);
-    doc.setFontSize(10); doc.setTextColor(0); y += 12;
-  }
-  doc.text('Game dealer / consignee: ______________________________________', ML, y); y += 14;
-  doc.text('Signature: ___________________________________', ML, y);
-  doc.text('Date: ____________________', ML + 360, y); y += 20;
-
-  doc.setFontSize(7); doc.setTextColor(150);
-  doc.text('Produced by First Light Cull Diary — firstlightdeer.co.uk', cx, PH - 18, { align: 'center' });
-
-  var fname = 'consignment-declaration-' + (dateMin || 'na')
-    + (dateMax && dateMax !== dateMin ? '-to-' + dateMax : '')
-    + '.pdf';
-  doc.save(fname);
-  showToast('✅ Consignment declaration PDF downloaded · ' + entries.length + ' carcass' + (entries.length === 1 ? '' : 'es'));
+  showToast('✅ Consignment declaration PDF downloaded · ' + res.count + ' carcass' + (res.count === 1 ? '' : 'es'));
   exitSelectMode();
 }
 
