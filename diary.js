@@ -50,7 +50,14 @@ import {
   buildCalibreDistanceStats,
   buildAgeStats,
   buildTrendsChart,
-  buildGroundStats
+  buildGroundStats,
+  // Commit O: the pure stats-tab body renderer. Paints top KPIs, weight
+  // grid, species+sex chart, sex chart, the seven sub-cards, and the
+  // monthly chart — everything that is a pure function of the filtered
+  // entries + a small opts bag. The surrounding orchestration (map init,
+  // season-pill sync, plan-card visibility, targets async chain, state
+  // flag writes) stays in buildStats(speciesFilter) below.
+  renderStatsTabBody
 } from './modules/stats.mjs';
 import {
   buildSimpleDiaryPDF,
@@ -3783,116 +3790,18 @@ function buildStats(speciesFilter) {
     if (_ssl1) _ssl1.textContent = y1 + '–' + y2 + ' · ' + seasonDateStr;
   }
 
+  // Pure paint half — hand off to modules/stats.mjs. Everything that is
+  // simply a function of `entries` + a few DI'd helpers lives there (KPIs,
+  // weight grid, species+sex chart, sex chart, seven sub-cards, monthly
+  // chart). See Commit O in MODULARISATION-PLAN.md.
   var entries = speciesFilter ? allEntries.filter(function(e){ return e.species === speciesFilter; }) : allEntries;
-  var total = entries.length;
-  var kg = entries.reduce(function(s,e){ return s + (parseFloat(e.weight_kg)||0); }, 0);
-  var mappedCount = entries.filter(function(e){ return e.lat != null && e.lng != null; }).length;
-  var mappedPct = total ? Math.round(mappedCount * 100 / total) : 0;
-  var speciesCount = new Set(entries.map(function(e){ return e.species; }).filter(Boolean)).size;
-  var weightEntries = entries.filter(function(e){ return hasValue(e.weight_kg); });
-  var avgWeight = weightEntries.length ? (kg / weightEntries.length) : 0;
-  var distEntries = entries.filter(function(e){ return hasValue(e.distance_m) && parseFloat(e.distance_m) > 0; });
-  var avgDist = distEntries.length ? Math.round(distEntries.reduce(function(s, e){ return s + parseFloat(e.distance_m); }, 0) / distEntries.length) : null;
-  var maxE = weightEntries.reduce(function(m,e){
-    if (!m) return e;
-    return parseFloat(e.weight_kg) > parseFloat(m.weight_kg) ? e : m;
-  }, null);
-  var targetCalc = computeSeasonTargetKpi(total);
-  var targetPct = targetCalc.targetPct;
-  // Null-safe DOM writes: if the cached HTML is an older version missing any of these IDs
-  // (e.g. service worker served a stale diary.html against the latest diary.js), we must not
-  // throw here — doing so would abort buildStats() before initCullMap() is scheduled, leaving
-  // the map/satellite toggle and fullscreen button silently inert.
-  function _setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
-  function _setHtml(id, val) { var el = document.getElementById(id); if (el) el.innerHTML = val; }
-  _setText('st-total', total);
-  _setText('st-total-sub', 'Mapped ' + mappedCount + '/' + total + ' · ' + mappedPct + '%');
-  _setText('st-target', targetPct == null ? '–' : (targetPct + '%'));
-  _setText('st-target-sub', formatSeasonTargetSub(total, targetCalc));
-  _setText('st-dist', avgDist == null ? '–' : String(avgDist) + 'm');
-  _setText('st-dist-sub', distEntries.length > 0
-    ? (distEntries.length + ' entr' + (distEntries.length === 1 ? 'y' : 'ies') + ' with distance')
-    : 'No shot distances recorded');
-  _setText('st-species', speciesCount);
-
-  var weightMeta = maxE ? (esc(maxE.species || '') + (maxE.date ? ' · ' + esc(String(maxE.date).slice(0, 7)) : '')) : 'No carcass weights recorded yet';
-  _setHtml('weight-chart',
-    '<div class="range-grid">'
-      + '<div class="range-cell"><div class="range-band">Total kg</div><div class="range-cnt">' + Math.round(kg) + '</div><div class="range-pct">all recorded entries</div></div>'
-      + '<div class="range-cell"><div class="range-band">Average kg</div><div class="range-cnt">' + (weightEntries.length ? avgWeight.toFixed(1) : '–') + '</div><div class="range-pct">' + weightEntries.length + ' weighted entr' + (weightEntries.length === 1 ? 'y' : 'ies') + '</div></div>'
-      + '<div class="range-cell"><div class="range-band">Heaviest</div><div class="range-cnt">' + (maxE ? esc(String(maxE.weight_kg)) : '–') + '</div><div class="range-pct">' + weightMeta + '</div></div>'
-      + '<div class="range-cell"><div class="range-band">Missing weight</div><div class="range-cnt">' + Math.max(0, total - weightEntries.length) + '</div><div class="range-pct">entries without carcass kg</div></div>'
-    + '</div>');
-
-  // Species chart with sex breakdown
-  var spCount = {}, spMale = {}, spFemale = {};
-  entries.forEach(function(e){
-    spCount[e.species]  = (spCount[e.species]||0)+1;
-    if (e.sex==='m') spMale[e.species]   = (spMale[e.species]||0)+1;
-    else             spFemale[e.species] = (spFemale[e.species]||0)+1;
+  renderStatsTabBody(entries, {
+    currentSeason:          currentSeason,
+    computeSeasonTargetKpi: computeSeasonTargetKpi,
+    formatSeasonTargetSub:  formatSeasonTargetSub,
+    hasValue:               hasValue,
+    statsChartEmpty:        statsChartEmpty,
   });
-  var spMax = Math.max.apply(null, Object.values(spCount).concat([1]));
-  var spColors = {'Red Deer':'#c8a84b','Roe Deer':'#5a7a30','Fallow':'#f57f17','Sika':'#1565c0','Muntjac':'#6a1b9a','CWD':'#00695c'};
-  var spMaleLabels = {'Red Deer':'Stag','Roe Deer':'Buck','Fallow':'Buck','Sika':'Stag','Muntjac':'Buck','CWD':'Buck'};
-  var spFemLabels  = {'Red Deer':'Hind','Roe Deer':'Doe','Fallow':'Doe','Sika':'Hind','Muntjac':'Doe','CWD':'Doe'};
-  var spHtml = Object.keys(spCount).sort(function(a,b){ return spCount[b]-spCount[a]; }).map(function(sp) {
-    var clr = spColors[sp]||'#5a7a30';
-    var mCnt = spMale[sp]||0, fCnt = spFemale[sp]||0;
-    var mLbl = spMaleLabels[sp]||'Male', fLbl = spFemLabels[sp]||'Female';
-    var html = '<div class="bar-row" style="margin-bottom:4px;">'
-      + '<div class="bar-lbl" style="font-size:12px;font-weight:700;">' + sp + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:' + (spCount[sp]/spMax*100) + '%;background:' + clr + ';"></div></div>'
-      + '<div class="bar-cnt">' + spCount[sp] + '</div></div>';
-    // Sex sub-rows
-    if (mCnt > 0) html += '<div class="bar-row" style="padding-left:12px;margin-bottom:3px;">'
-      + '<div class="bar-lbl" style="font-size:10px;color:var(--muted);">♂ ' + mLbl + '</div>'
-      + '<div class="bar-track" style="height:4px;"><div class="bar-fill" style="width:' + (mCnt/spCount[sp]*100) + '%;background:rgba(191,54,12,0.55);"></div></div>'
-      + '<div class="bar-cnt" style="font-size:10px;color:var(--muted);">' + mCnt + '</div></div>';
-    if (fCnt > 0) html += '<div class="bar-row" style="padding-left:12px;margin-bottom:8px;">'
-      + '<div class="bar-lbl" style="font-size:10px;color:var(--muted);">♀ ' + fLbl + '</div>'
-      + '<div class="bar-track" style="height:4px;"><div class="bar-fill" style="width:' + (fCnt/spCount[sp]*100) + '%;background:rgba(136,14,79,0.55);"></div></div>'
-      + '<div class="bar-cnt" style="font-size:10px;color:var(--muted);">' + fCnt + '</div></div>';
-    return html;
-  }).join('');
-  _setHtml('species-chart', spHtml || statsChartEmpty('No culls this season'));
-
-  // Sex chart
-  var mCount = entries.filter(function(e){ return e.sex === 'm'; }).length;
-  var fCount = entries.filter(function(e){ return e.sex === 'f'; }).length;
-  var sexMax = Math.max(mCount, fCount, 1);
-  _setHtml('sex-chart',
-    '<div class="bar-row"><div class="bar-lbl">♂ Male</div><div class="bar-track"><div class="bar-fill" style="width:' + (mCount/sexMax*100) + '%;background:rgba(191,54,12,0.75);"></div></div><div class="bar-cnt">' + mCount + '</div></div>' +
-    '<div class="bar-row"><div class="bar-lbl">♀ Female</div><div class="bar-track"><div class="bar-fill" style="width:' + (fCount/sexMax*100) + '%;background:rgba(136,14,79,0.75);"></div></div><div class="bar-cnt">' + fCount + '</div></div>');
-
-  // Calibre, distance, age & ground stats
-  buildCalibreDistanceStats(entries);
-  buildAgeStats(entries);
-  buildShooterStats(entries);
-  buildDestinationStats(entries);
-  buildTimeOfDayStats(entries);
-  buildTrendsChart(entries, { currentSeason: currentSeason });
-  buildGroundStats(entries);
-
-  // Cull map init is scheduled at the top of buildStats (see comment there).
-
-  // Monthly chart
-  var mCount2 = {};
-  entries.forEach(function(e) {
-    if (!e.date) return;
-    var dp = String(e.date).trim().split('-');
-    var m = parseInt(dp[1], 10);
-    if (!Number.isFinite(m) || m < 1 || m > 12) return;
-    mCount2[m] = (mCount2[m] || 0) + 1;
-  });
-  var mMax = Math.max.apply(null, Object.values(mCount2).concat([1]));
-  var seasonMonths = [8,9,10,11,12,1,2,3,4,5,6,7];
-  var mHtml = seasonMonths.map(function(m) {
-    var cnt = mCount2[m]||0;
-    var h = cnt ? Math.max(6, Math.round(cnt/mMax*60)) : 3;
-    var cls = cnt ? (cnt === Math.max.apply(null, Object.values(mCount2)) ? 'mc-bar pk' : 'mc-bar on') : 'mc-bar';
-    return '<div class="mc-col"><div class="' + cls + '" style="height:' + h + 'px;' + (cnt ? '' : 'opacity:0.4;') + '"></div><div class="mc-lbl">' + MONTH_NAMES[m-1] + '</div></div>';
-  }).join('');
-  _setHtml('month-chart', mHtml);
 
   statsNeedsFullRebuild = false;
   statsLastBuildSize = allEntries.length;

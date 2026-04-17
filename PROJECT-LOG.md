@@ -4,6 +4,36 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Phase 2 / Commit O: Stats-tab body renderer → `modules/stats.mjs`
+
+Third and final stats-side extraction. The pure render half of `buildStats` — top KPIs, weight grid, species+sex chart, sex chart, fan-out to the seven sub-cards, and the seasonal-month chart — now lives in `modules/stats.mjs` as `renderStatsTabBody(entries, opts)`. The orchestration half (map init, season-pill sync, plan-card visibility, targets async chain, season date label, state flag writes) stays in diary.js — it needs live access to ~10 diary-side globals/functions and there's no clean way to move it without importing most of diary.js into the module.
+
+### Why this split rather than moving `buildStats` wholesale
+A literal move would need ~15 dependency-injection slots (`initCullMap`, `renderCullMapPins`, `loadTargets`, `loadGroundTargets`, `loadPrevTargets`, `renderPlanGroundFilter`, `renderPlanCard`, `refreshSeasonTargetKpi`, `renderSyndicateSection`, `updateSyndicateExportVisibility`, `seasonDates`, `allEntries`, `cullMap`, `statsNeedsFullRebuild`, `statsLastBuildSize`). That's 169 lines of logic for 169+ lines of DI plumbing — no net win. Splitting the function at the natural boundary (orchestration vs. rendering) gives the module the part that genuinely belongs there while leaving the side-effectful glue in diary.js. The plan doc already flagged this tier as "views" — diary.js's `buildStats` is now a thin view wrapper.
+
+### What moved
+- `renderStatsTabBody(entries, opts)` — exported from `modules/stats.mjs`.
+  - `opts.currentSeason` — threaded into `buildTrendsChart`.
+  - `opts.computeSeasonTargetKpi(total)` — DI (reads diary-side `cullTargets`).
+  - `opts.formatSeasonTargetSub(total, calc)` — DI.
+  - `opts.hasValue(v)` — DI (shared 3-line helper).
+  - `opts.statsChartEmpty(msg)` — DI (renders the "No data" placeholder).
+  - `esc`, `seasonLabel`, `buildSeasonFromEntry`, `MONTH_NAMES` — imported from `lib/fl-pure.mjs` directly; no DI needed.
+
+### Changes
+- `modules/stats.mjs` (+158 lines → now 820 lines; 19 exports total). Header comment updated to describe the Commit O addition and the explicit list of concerns that are deliberately NOT in the function.
+- `diary.js`: `buildStats(speciesFilter)` shrinks **169 → 71 lines** (−98, ~58%). The remaining body is exactly the orchestration: map init, season-pill sync, plan-card visibility, async targets chain, season date label, entries filter, delegate to `renderStatsTabBody`, state flag writes. Import block gets `renderStatsTabBody` added.
+- `tests/stats.test.mjs` (+10 tests, 65 total): covers top KPIs + DI target-pct fallback, weight grid (total/avg/heaviest/missing), species chart sort desc + sex sub-rows, species chart empty-fallback via DI, sex chart always renders both rows, monthly chart 12 columns in Aug→Jul order + peak `.pk` accent, fan-out to all seven sub-builders (assertion: every sub-card style.display was touched), top-KPI null-safety when KPI ids are missing, `opts.currentSeason` actually reaches `buildTrendsChart`.
+- `sw.js`: SW_VERSION 7.65 → 7.66.
+
+### Tests
+199/199 green across the whole suite. `stats.test.mjs` alone: 65 tests (was 55; +10 new). No lint errors.
+
+### Phase-2-stats progress
+3/3 — **Commit O shipped; phase complete.** Full branch arc `M → N → O`: +~550 lines in `modules/stats.mjs`, −~470 lines in `diary.js`, +43 new tests (22 → 65). `feat/modularise-phase-2-stats` ready for push + fast-forward merge into main.
+
+---
+
 ## 2026-04-17 — Phase 2 / Commit N: age / calibre+distance / trends / ground paint wrappers → `modules/stats.mjs`
 
 Second stats-side extraction. The four larger DOM paint wrappers from the Stats tab's "More" section now live in the stats module alongside the small wrappers from Commit M. Also moves the tiny legacy-label helper (`normalizeAgeClassLabel`) since it's effectively a member of the age-class family.

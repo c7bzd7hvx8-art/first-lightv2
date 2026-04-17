@@ -34,16 +34,30 @@
 //                                          hidden unless it equals '__all__'
 //     • buildGroundStats(entries)        — renders #ground-card / #ground-chart
 //
-//   Every paint wrapper hides its card when there is no data worth showing.
+//   Stats-tab body renderer (Commit O):
+//     • renderStatsTabBody(entries, opts) — renders every stats-tab card
+//                                          that is purely a function of
+//                                          `entries`: top KPIs, weight
+//                                          grid, species+sex chart, sex
+//                                          chart, the seven sub-cards
+//                                          above, and the monthly chart.
+//                                          Does NOT schedule map init,
+//                                          sync the season-pill select,
+//                                          fetch targets, or refresh the
+//                                          syndicate section — those are
+//                                          side-effectful orchestration
+//                                          concerns and stay in diary.js's
+//                                          buildStats wrapper. See the
+//                                          function's own doc-comment for
+//                                          the full opts contract.
 //
-// Explicitly *not* in this module (stays in diary.js for now):
-//   • buildStats orchestrator — Commit O.
+//   Every paint wrapper hides its card when there is no data worth showing.
 //
 // Data-table + aggregator functions are pure. The DOM paint wrappers touch
 // `document` and are tested with a small in-memory DOM stub.
 // =============================================================================
 
-import { esc, seasonLabel, buildSeasonFromEntry } from '../lib/fl-pure.mjs';
+import { esc, seasonLabel, buildSeasonFromEntry, MONTH_NAMES } from '../lib/fl-pure.mjs';
 
 // ── Shared palettes / age labels ──────────────────────────────────────────
 
@@ -652,4 +666,177 @@ export function buildGroundStats(entries) {
   }
 
   chart.innerHTML = html;
+}
+
+// ── renderStatsTabBody ────────────────────────────────────────────────────
+// Paints every card in the Stats tab that is a pure function of the filtered
+// `entries` array: top KPIs, weight grid, species+sex chart, sex chart, the
+// seven sub-cards (calibre / distance / age / shooter / destination /
+// time-of-day / trends / ground), and the seasonal-month chart.
+//
+// What this function deliberately does NOT do:
+//   • schedule map init / re-render pins
+//   • sync the season-pill <select> with the list view
+//   • show/hide the plan card or trigger the targets-loading async chain
+//   • refresh the syndicate section or export-visibility
+//   • read or write module-level mutable state in diary.js
+//      (statsNeedsFullRebuild, statsLastBuildSize, cullMap, …)
+//
+// Those concerns remain in the `buildStats(speciesFilter)` wrapper inside
+// diary.js because they need access to live diary-side globals, async
+// chains, and the Leaflet map state. This function is the pure paint
+// half — it fills in DOM based on the inputs it receives.
+//
+// @param {Array<Object>} entries
+//     Already filtered entries (post species-chip filter if any). The
+//     caller is responsible for filtering; this function just paints.
+// @param {Object} opts
+// @param {string}   opts.currentSeason
+//     e.g. '2025-26' or '__all__'. Threaded into buildTrendsChart.
+// @param {Function} opts.computeSeasonTargetKpi
+//     (totalActual:number) → { targetPct:number|null, … }. Diary.js owns
+//     the logic because it reads cullTargets / groundTargets globals.
+// @param {Function} opts.formatSeasonTargetSub
+//     (totalActual:number, calc) → string. Formats the "X of Y culls" line.
+// @param {Function} opts.hasValue
+//     (v) → bool. Truthy for anything that isn't null/undefined/''.
+//     DI'd so diary.js can share its own implementation.
+// @param {Function} opts.statsChartEmpty
+//     (message:string) → html. Returns the "no data" placeholder HTML for
+//     a chart card. Also DI'd to keep styling hook consistent.
+export function renderStatsTabBody(entries, opts) {
+  var currentSeason            = opts.currentSeason;
+  var computeSeasonTargetKpi   = opts.computeSeasonTargetKpi;
+  var formatSeasonTargetSub    = opts.formatSeasonTargetSub;
+  var hasValue                 = opts.hasValue;
+  var statsChartEmpty          = opts.statsChartEmpty;
+
+  var total = entries.length;
+  var kg = entries.reduce(function(s,e){ return s + (parseFloat(e.weight_kg)||0); }, 0);
+  var mappedCount = entries.filter(function(e){ return e.lat != null && e.lng != null; }).length;
+  var mappedPct = total ? Math.round(mappedCount * 100 / total) : 0;
+  var speciesCount = new Set(entries.map(function(e){ return e.species; }).filter(Boolean)).size;
+  var weightEntries = entries.filter(function(e){ return hasValue(e.weight_kg); });
+  var avgWeight = weightEntries.length ? (kg / weightEntries.length) : 0;
+  var distEntries = entries.filter(function(e){ return hasValue(e.distance_m) && parseFloat(e.distance_m) > 0; });
+  var avgDist = distEntries.length ? Math.round(distEntries.reduce(function(s, e){ return s + parseFloat(e.distance_m); }, 0) / distEntries.length) : null;
+  var maxE = weightEntries.reduce(function(m,e){
+    if (!m) return e;
+    return parseFloat(e.weight_kg) > parseFloat(m.weight_kg) ? e : m;
+  }, null);
+  var targetCalc = computeSeasonTargetKpi(total);
+  var targetPct = targetCalc.targetPct;
+
+  // Null-safe DOM writes — if the cached HTML is an older version missing any
+  // of these IDs (e.g. service worker served a stale diary.html against the
+  // latest diary.js), we must not throw here. Throwing would abort this
+  // function before the sub-builders run, leaving the More section blank.
+  function _setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+  function _setHtml(id, val) { var el = document.getElementById(id); if (el) el.innerHTML = val; }
+
+  _setText('st-total', total);
+  _setText('st-total-sub', 'Mapped ' + mappedCount + '/' + total + ' · ' + mappedPct + '%');
+  _setText('st-target', targetPct == null ? '–' : (targetPct + '%'));
+  _setText('st-target-sub', formatSeasonTargetSub(total, targetCalc));
+  _setText('st-dist', avgDist == null ? '–' : String(avgDist) + 'm');
+  _setText('st-dist-sub', distEntries.length > 0
+    ? (distEntries.length + ' entr' + (distEntries.length === 1 ? 'y' : 'ies') + ' with distance')
+    : 'No shot distances recorded');
+  _setText('st-species', speciesCount);
+
+  // Weight grid — four cells: total kg, average, heaviest-ever, missing-weight
+  // count. Each cell is styled as a range-cell so the visual rhythm matches
+  // the distance-bands grid lower down.
+  var weightMeta = maxE ? (esc(maxE.species || '') + (maxE.date ? ' · ' + esc(String(maxE.date).slice(0, 7)) : '')) : 'No carcass weights recorded yet';
+  _setHtml('weight-chart',
+    '<div class="range-grid">'
+      + '<div class="range-cell"><div class="range-band">Total kg</div><div class="range-cnt">' + Math.round(kg) + '</div><div class="range-pct">all recorded entries</div></div>'
+      + '<div class="range-cell"><div class="range-band">Average kg</div><div class="range-cnt">' + (weightEntries.length ? avgWeight.toFixed(1) : '–') + '</div><div class="range-pct">' + weightEntries.length + ' weighted entr' + (weightEntries.length === 1 ? 'y' : 'ies') + '</div></div>'
+      + '<div class="range-cell"><div class="range-band">Heaviest</div><div class="range-cnt">' + (maxE ? esc(String(maxE.weight_kg)) : '–') + '</div><div class="range-pct">' + weightMeta + '</div></div>'
+      + '<div class="range-cell"><div class="range-band">Missing weight</div><div class="range-cnt">' + Math.max(0, total - weightEntries.length) + '</div><div class="range-pct">entries without carcass kg</div></div>'
+    + '</div>');
+
+  // Species chart with sex sub-breakdown. Each species row gets the species
+  // colour; below each row the male/female sub-rows reuse the same dark-red
+  // and dark-purple semitransparent fills that appear in the main Sex chart
+  // below, so the two cards reinforce each other rather than competing.
+  var spCount = {}, spMale = {}, spFemale = {};
+  entries.forEach(function(e){
+    spCount[e.species]  = (spCount[e.species]||0)+1;
+    if (e.sex==='m') spMale[e.species]   = (spMale[e.species]||0)+1;
+    else             spFemale[e.species] = (spFemale[e.species]||0)+1;
+  });
+  var spMax = Math.max.apply(null, Object.values(spCount).concat([1]));
+  // Species palette is intentionally kept local (rather than lifted to the
+  // top-of-module SP_COLORS_D) because these 6-hex swatches are slightly
+  // darker variants intended for the species chart's main bars, while
+  // SP_COLORS_D is tuned for the smaller distance/age species-dots. Keeping
+  // both lets designers tweak either without accidentally changing the
+  // other.
+  var spColors      = {'Red Deer':'#c8a84b','Roe Deer':'#5a7a30','Fallow':'#f57f17','Sika':'#1565c0','Muntjac':'#6a1b9a','CWD':'#00695c'};
+  var spMaleLabels  = {'Red Deer':'Stag','Roe Deer':'Buck','Fallow':'Buck','Sika':'Stag','Muntjac':'Buck','CWD':'Buck'};
+  var spFemLabels   = {'Red Deer':'Hind','Roe Deer':'Doe','Fallow':'Doe','Sika':'Hind','Muntjac':'Doe','CWD':'Doe'};
+  var spHtml = Object.keys(spCount).sort(function(a,b){ return spCount[b]-spCount[a]; }).map(function(sp) {
+    var clr = spColors[sp]||'#5a7a30';
+    var mCnt = spMale[sp]||0, fCnt = spFemale[sp]||0;
+    var mLbl = spMaleLabels[sp]||'Male', fLbl = spFemLabels[sp]||'Female';
+    var html = '<div class="bar-row" style="margin-bottom:4px;">'
+      + '<div class="bar-lbl" style="font-size:12px;font-weight:700;">' + sp + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:' + (spCount[sp]/spMax*100) + '%;background:' + clr + ';"></div></div>'
+      + '<div class="bar-cnt">' + spCount[sp] + '</div></div>';
+    if (mCnt > 0) html += '<div class="bar-row" style="padding-left:12px;margin-bottom:3px;">'
+      + '<div class="bar-lbl" style="font-size:10px;color:var(--muted);">♂ ' + mLbl + '</div>'
+      + '<div class="bar-track" style="height:4px;"><div class="bar-fill" style="width:' + (mCnt/spCount[sp]*100) + '%;background:rgba(191,54,12,0.55);"></div></div>'
+      + '<div class="bar-cnt" style="font-size:10px;color:var(--muted);">' + mCnt + '</div></div>';
+    if (fCnt > 0) html += '<div class="bar-row" style="padding-left:12px;margin-bottom:8px;">'
+      + '<div class="bar-lbl" style="font-size:10px;color:var(--muted);">♀ ' + fLbl + '</div>'
+      + '<div class="bar-track" style="height:4px;"><div class="bar-fill" style="width:' + (fCnt/spCount[sp]*100) + '%;background:rgba(136,14,79,0.55);"></div></div>'
+      + '<div class="bar-cnt" style="font-size:10px;color:var(--muted);">' + fCnt + '</div></div>';
+    return html;
+  }).join('');
+  _setHtml('species-chart', spHtml || statsChartEmpty('No culls this season'));
+
+  // Top-level Sex chart (card sits below the species one). Uses the same
+  // dark-red / dark-purple palette but at full opacity — the detail-level
+  // sex sub-rows above use a muted variant on purpose.
+  var mCount = entries.filter(function(e){ return e.sex === 'm'; }).length;
+  var fCount = entries.filter(function(e){ return e.sex === 'f'; }).length;
+  var sexMax = Math.max(mCount, fCount, 1);
+  _setHtml('sex-chart',
+    '<div class="bar-row"><div class="bar-lbl">♂ Male</div><div class="bar-track"><div class="bar-fill" style="width:' + (mCount/sexMax*100) + '%;background:rgba(191,54,12,0.75);"></div></div><div class="bar-cnt">' + mCount + '</div></div>' +
+    '<div class="bar-row"><div class="bar-lbl">♀ Female</div><div class="bar-track"><div class="bar-fill" style="width:' + (fCount/sexMax*100) + '%;background:rgba(136,14,79,0.75);"></div></div><div class="bar-cnt">' + fCount + '</div></div>');
+
+  // Fan out to the seven sub-builders. Each one is independently self-
+  // contained: it reads its own card + chart elements by id, hides the
+  // card when its data is uninteresting, and writes HTML only once.
+  buildCalibreDistanceStats(entries);
+  buildAgeStats(entries);
+  buildShooterStats(entries);
+  buildDestinationStats(entries);
+  buildTimeOfDayStats(entries);
+  buildTrendsChart(entries, { currentSeason: currentSeason });
+  buildGroundStats(entries);
+
+  // Monthly chart — 12 columns in UK-deer-season order (Aug → Jul). A bar's
+  // height is scaled to the peak month's count but capped at 60px; empty
+  // months get a 3px stub with 40% opacity so every column still reads as
+  // present. The peak month gets the `.pk` accent class.
+  var mCount2 = {};
+  entries.forEach(function(e) {
+    if (!e.date) return;
+    var dp = String(e.date).trim().split('-');
+    var m = parseInt(dp[1], 10);
+    if (!Number.isFinite(m) || m < 1 || m > 12) return;
+    mCount2[m] = (mCount2[m] || 0) + 1;
+  });
+  var mMax = Math.max.apply(null, Object.values(mCount2).concat([1]));
+  var seasonMonths = [8,9,10,11,12,1,2,3,4,5,6,7];
+  var peakCount = Math.max.apply(null, Object.values(mCount2).concat([0]));
+  var mHtml = seasonMonths.map(function(m) {
+    var cnt = mCount2[m]||0;
+    var h = cnt ? Math.max(6, Math.round(cnt/mMax*60)) : 3;
+    var cls = cnt ? (cnt === peakCount ? 'mc-bar pk' : 'mc-bar on') : 'mc-bar';
+    return '<div class="mc-col"><div class="' + cls + '" style="height:' + h + 'px;' + (cnt ? '' : 'opacity:0.4;') + '"></div><div class="mc-lbl">' + MONTH_NAMES[m-1] + '</div></div>';
+  }).join('');
+  _setHtml('month-chart', mHtml);
 }

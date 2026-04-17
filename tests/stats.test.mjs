@@ -27,7 +27,8 @@ import {
   buildCalibreDistanceStats,
   buildAgeStats,
   buildTrendsChart,
-  buildGroundStats
+  buildGroundStats,
+  renderStatsTabBody
 } from '../modules/stats.mjs';
 
 // ── Data-table invariants ──────────────────────────────────────────────────
@@ -651,5 +652,235 @@ test('buildGroundStats escapes hostile ground names', () => {
     const html = restore.els['ground-chart'].innerHTML;
     assert.equal(html.includes('<script>x</script>'), false);
     assert.match(html, /&lt;script&gt;/);
+  } finally { restore(); }
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Commit O — renderStatsTabBody orchestrator
+// ═════════════════════════════════════════════════════════════════════════
+
+// Every DOM id that renderStatsTabBody reaches for. Kept as a module-level
+// constant so each test registers the same set with its stub.
+const STATS_TAB_IDS = [
+  // top KPI cells
+  'st-total', 'st-total-sub',
+  'st-target', 'st-target-sub',
+  'st-dist', 'st-dist-sub',
+  'st-species',
+  // main charts
+  'weight-chart', 'species-chart', 'sex-chart', 'month-chart',
+  // sub-card elements (the fan-out builders all touch these)
+  'calibre-card', 'calibre-chart',
+  'distance-card', 'distance-chart',
+  'age-card', 'age-chart',
+  'shooter-card', 'shooter-chart',
+  'destination-card', 'destination-chart',
+  'time-card', 'time-chart',
+  'trends-card', 'trends-chart',
+  'ground-card', 'ground-chart',
+];
+
+// Default opts bag — overridable per-test. Matches the real DI contract
+// from diary.js's buildStats wrapper:
+//   computeSeasonTargetKpi(total)           → { targetPct, ... }
+//   formatSeasonTargetSub(total, calc)      → string
+//   hasValue(v)                             → bool
+//   statsChartEmpty(msg)                    → html
+function makeOpts(overrides) {
+  const base = {
+    currentSeason: '2025-26',
+    computeSeasonTargetKpi: () => ({ targetPct: 42 }),
+    formatSeasonTargetSub:  (n, c) => n + ' culls · ' + (c.targetPct == null ? '–' : c.targetPct + '%'),
+    hasValue: v => !(v === null || v === undefined || v === ''),
+    statsChartEmpty: msg => '<div class="stats-empty">' + msg + '</div>',
+  };
+  return Object.assign(base, overrides || {});
+}
+
+test('renderStatsTabBody paints top KPIs from entries + opts DI', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody(
+      [
+        { species: 'Roe Deer', weight_kg: '15',  distance_m: 80, lat: 52, lng: 1 },
+        { species: 'Fallow',   weight_kg: '40',  distance_m: 120 },
+        { species: 'Roe Deer' },
+      ],
+      makeOpts()
+    );
+    // Total entries = 3.
+    assert.equal(restore.els['st-total'].textContent, 3);
+    // 1/3 mapped → 33%.
+    assert.match(restore.els['st-total-sub'].textContent, /Mapped 1\/3 · 33%/);
+    // Target pill mirrors the DI'd calc (42%).
+    assert.equal(restore.els['st-target'].textContent, '42%');
+    assert.match(restore.els['st-target-sub'].textContent, /3 culls · 42%/);
+    // Distance avg = round((80+120)/2) = 100m.
+    assert.equal(restore.els['st-dist'].textContent, '100m');
+    assert.match(restore.els['st-dist-sub'].textContent, /2 entries with distance/);
+    // 2 distinct species.
+    assert.equal(restore.els['st-species'].textContent, 2);
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody renders the em-dash fallback when targetPct is null', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody(
+      [{ species: 'Roe Deer' }],
+      makeOpts({ computeSeasonTargetKpi: () => ({ targetPct: null }) })
+    );
+    assert.equal(restore.els['st-target'].textContent, '–');
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody renders weight grid with total / average / heaviest / missing', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody(
+      [
+        { species: 'Roe Deer', weight_kg: '20', date: '2024-08-15' },
+        { species: 'Fallow',   weight_kg: '50', date: '2024-09-01' },
+        { species: 'Roe Deer' },
+      ],
+      makeOpts()
+    );
+    const html = restore.els['weight-chart'].innerHTML;
+    // Total kg = 70.
+    assert.match(html, /Total kg[\s\S]*?70</);
+    // Average = 35.0.
+    assert.match(html, /Average kg[\s\S]*?35\.0</);
+    // Heaviest entry — Fallow at 50 kg, dated 2024-09.
+    assert.match(html, /Heaviest[\s\S]*?50<[\s\S]*?Fallow · 2024-09/);
+    // Missing weight = 1.
+    assert.match(html, /Missing weight[\s\S]*?1</);
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody species chart paints bar + sex sub-rows per species, sorted desc', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody(
+      [
+        { species: 'Roe Deer', sex: 'm' },
+        { species: 'Roe Deer', sex: 'f' },
+        { species: 'Roe Deer', sex: 'f' },
+        { species: 'Fallow',   sex: 'm' },
+      ],
+      makeOpts()
+    );
+    const html = restore.els['species-chart'].innerHTML;
+    // Roe Deer appears before Fallow (higher count).
+    assert.ok(html.indexOf('Roe Deer') < html.indexOf('Fallow'));
+    // Male sub-label for Roe Deer is "Buck".
+    assert.match(html, /Roe Deer[\s\S]*?♂ Buck/);
+    // Female sub-label for Roe Deer is "Doe".
+    assert.match(html, /Roe Deer[\s\S]*?♀ Doe/);
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody species chart falls back to statsChartEmpty on zero entries', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody([], makeOpts({
+      statsChartEmpty: msg => '<div class="EMPTY">' + msg + '</div>',
+    }));
+    assert.match(restore.els['species-chart'].innerHTML, /class="EMPTY"[\s\S]*?No culls this season/);
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody sex chart always paints both Male and Female rows', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody([{ species: 'Roe Deer', sex: 'm' }], makeOpts());
+    const html = restore.els['sex-chart'].innerHTML;
+    assert.match(html, /♂ Male/);
+    assert.match(html, /♀ Female/);
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody monthly chart emits 12 columns in UK season order (Aug→Jul)', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody(
+      [
+        { species: 'Roe Deer', date: '2024-08-15' },
+        { species: 'Roe Deer', date: '2024-08-20' },
+        { species: 'Roe Deer', date: '2025-01-05' },
+      ],
+      makeOpts()
+    );
+    const html = restore.els['month-chart'].innerHTML;
+    const cols = html.match(/class="mc-col"/g) || [];
+    assert.equal(cols.length, 12);
+    // Aug is the first column rendered.
+    const firstLblIdx = html.indexOf('class="mc-lbl">');
+    assert.match(html.slice(firstLblIdx, firstLblIdx + 40), /Aug/);
+    // Aug has 2 entries → peak month, should get the `.pk` class.
+    assert.match(html, /mc-bar pk[\s\S]*?Aug/);
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody fans out to the seven sub-builders (they touch their own cards)', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    renderStatsTabBody(
+      [
+        { species: 'Roe Deer', calibre: '.243', distance_m: 80, age_class: 'Yearling',
+          shooter: 'Self', destination: 'Game dealer', time: '06:30', ground: 'Farm A',
+          date: '2024-08-15' },
+      ],
+      makeOpts({ currentSeason: '__all__' })   // trends will still hide (<2 seasons)
+    );
+    // Each sub-card has had its card-element touched (display was set to 'block'
+    // or 'none' — and since we prime style.display = '' in the stub, any change
+    // away from '' means the builder ran).
+    const touched = [
+      'calibre-card','distance-card','age-card','shooter-card',
+      'destination-card','time-card','trends-card','ground-card'
+    ];
+    for (const id of touched) {
+      assert.notEqual(restore.els[id].style.display, '',
+        id + ' not touched by a sub-builder');
+    }
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody top-KPI + chart writes are null-safe when KPI ids are missing', () => {
+  // Register only the sub-card ids (the sub-builders pre-date the null-safe
+  // _setText / _setHtml helpers and still assume their own cards exist).
+  // The top-KPI cells / weight-chart / species-chart / sex-chart / month-chart
+  // MUST survive a missing node without throwing — that is the protection the
+  // _setText / _setHtml helpers in this body provide against stale-cache skew.
+  const restore = installDomStub([
+    'calibre-card', 'calibre-chart', 'distance-card', 'distance-chart',
+    'age-card', 'age-chart', 'shooter-card', 'shooter-chart',
+    'destination-card', 'destination-chart', 'time-card', 'time-chart',
+    'trends-card', 'trends-chart', 'ground-card', 'ground-chart',
+  ]);
+  try {
+    renderStatsTabBody(
+      [{ species: 'Roe Deer', weight_kg: '20', distance_m: 80 }],
+      makeOpts()
+    );
+    // Did not throw despite every top-KPI / weight / species / sex / month
+    // element being absent — the null-safety contract held.
+  } finally { restore(); }
+});
+
+test('renderStatsTabBody routes opts.currentSeason to buildTrendsChart', () => {
+  const restore = installDomStub(STATS_TAB_IDS);
+  try {
+    // With __all__ and ≥2 seasons, trends should be visible.
+    renderStatsTabBody(
+      [
+        { species: 'Roe Deer', date: '2023-08-15' },
+        { species: 'Roe Deer', date: '2024-08-15' },
+        { species: 'Roe Deer', date: '2025-08-15' },
+      ],
+      makeOpts({ currentSeason: '__all__' })
+    );
+    assert.equal(restore.els['trends-card'].style.display, 'block');
+    assert.match(restore.els['trends-chart'].innerHTML, /bar-row/);
   } finally { restore(); }
 });
