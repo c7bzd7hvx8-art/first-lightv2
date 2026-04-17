@@ -46,3 +46,8 @@ supabase/.branches/
 # Local log / dump files
 *.log
 *.dump
+
+# Agent scratch — short-lived helper scripts / commit-message files the
+# AI assistant writes during refactor work. Always prefixed with `_` and
+# suffixed with `.tmp.<ext>`; never intended to ship.
+_*.tmp.*
