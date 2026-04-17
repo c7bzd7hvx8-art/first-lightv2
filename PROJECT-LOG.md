@@ -4,6 +4,21 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Deer School: stronger Legislation distractors + per-session option shuffle
+
+Assessment-design pass: some multiple-choice wrong answers were far shorter or obviously absurd than the correct line (easy to guess without reading). Stems and correct answers unchanged.
+
+- `questions.js` — rewrote distractors on three **Legislation** items for balanced length and plausible-but-wrong legal framing:
+  - documentation required to prove permission to stalk on a specific piece of land;
+  - Deer Act definition of "night";
+  - occupier shooting out of season on enclosed land.
+- `deerschool.js` — after each quiz session picks its question list, every question is copied through `shuffleQuestionOptions()` so the four answers appear in **random order** with `correctIndex` remapped. Stops reliance on fixed bank order / button position. Review-wrong mode is unchanged (it uses the option order stored at answer time).
+- `sw.js` — `SW_VERSION` `7.77 → 7.78` so cached installs load updated `questions.js` and engine.
+
+Tests: existing `node --test` suite unchanged (Deer School not covered by automated tests); manual smoke: start Quick Quiz, confirm options reorder between sessions.
+
+---
+
 ## 2026-04-17 — Bugfix pass: profile-save accuracy, password error messaging, calibre field state
 
 Focused bug-hunt follow-up fixing three correctness issues found in `diary.js`.

@@ -247,6 +247,26 @@ function shuffle(arr) {
   return a;
 }
 
+/**
+ * Randomise answer-button order for each question in a session so users cannot
+ * rely on position or "longest option" heuristics from the static bank order.
+ * Returns a shallow copy with remapped correctIndex; does not mutate the bank.
+ */
+function shuffleQuestionOptions(q) {
+  var pairs = q.options.map(function(text, i) {
+    return { text: text, isCorrect: i === q.correctIndex };
+  });
+  var shuffled = shuffle(pairs);
+  return {
+    category: q.category,
+    question: q.question,
+    options: shuffled.map(function(o) { return o.text; }),
+    correctIndex: shuffled.findIndex(function(o) { return o.isCorrect; }),
+    explanation: q.explanation,
+    _bankIdx: q._bankIdx
+  };
+}
+
 // ── Start quiz ─────────────────────────────────────────────────
 // Timer state
 var timerInterval = null;
@@ -328,7 +348,7 @@ function startQuiz(mode, categoryFilter) {
   } else {
     quizQs = shuffle(pool).slice(0, Math.min(count, pool.length));
   }
-  quizQuestions = quizQs;
+  quizQuestions = quizQs.map(shuffleQuestionOptions);
   currentQIdx = 0;
   quizAnswers = [];
   wrongQuestions = [];
