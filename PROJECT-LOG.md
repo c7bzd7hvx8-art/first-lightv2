@@ -4,18 +4,20 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
-## 2026-04-17 — Deer School: stronger Legislation distractors + per-session option shuffle
+## 2026-04-17 — Deer School: distractors, option shuffle, bank-wide pass
 
-Assessment-design pass: some multiple-choice wrong answers were far shorter or obviously absurd than the correct line (easy to guess without reading). Stems and correct answers unchanged.
+Assessment-design: multiple-choice wrong answers were sometimes far shorter than the correct line (easy to guess by length). **Question stems, correct-option text, `correctIndex`, and explanations** were unchanged except where the **wrong** options were rewritten.
 
-- `questions.js` — rewrote distractors on three **Legislation** items for balanced length and plausible-but-wrong legal framing:
-  - documentation required to prove permission to stalk on a specific piece of land;
-  - Deer Act definition of "night";
-  - occupier shooting out of season on enclosed land.
-- `deerschool.js` — after each quiz session picks its question list, every question is copied through `shuffleQuestionOptions()` so the four answers appear in **random order** with `correctIndex` remapped. Stops reliance on fixed bank order / button position. Review-wrong mode is unchanged (it uses the option order stored at answer time).
-- `sw.js` — `SW_VERSION` `7.77 → 7.78` so cached installs load updated `questions.js` and engine.
+- `questions.js` — hand-tuned **three Legislation** distractors (land permission proof; Deer Act “night”; occupier out-of-season on enclosed land). A later **automated** bank-wide lengthening pass was **reverted**: it had appended generic “identification / textbook” tails to wrong options across Safety, Fieldcraft, etc., producing nonsense (e.g. FMJ described as an “identification answer”). File restored to commit `6b9f834` baseline (clean short distractors; shuffle unchanged in `deerschool.js`).
+- `scripts/enhance-deer-distractors.mjs` — repeatable parser; preserves `//` section comments inside `QUESTION_BANK`. **Fix:** species/coat “Identification” tails apply only when `category === "Identification"`; other categories use separate short tails if the script is run again.
+- `deerschool.js` — after each quiz session builds its question list, `shuffleQuestionOptions()` randomises the four answers and remaps `correctIndex`. Review-wrong mode still uses the order stored at answer time.
+- `sw.js` — cache bumps `7.77 → 7.78` (shuffle + first distractor edits), `7.78 → 7.79` (superseded bank-wide pass), then `7.79 → 7.80` (revert bad tails + script guard).
 
-Tests: existing `node --test` suite unchanged (Deer School not covered by automated tests); manual smoke: start Quick Quiz, confirm options reorder between sessions.
+Tests: `node --test` unchanged (Deer School not covered); manual: Quick Quiz and shuffle/review flows.
+
+- `scripts/export-question-bank.mjs` + `exports/deer-school-question-bank.json` / `exports/deer-school-question-bank.md` — full **330-question** export (stems, four options, `correctIndex`, explanations) for offline editing; regenerate with `node scripts/export-question-bank.mjs`.
+- `exports/deer-school-question-bank-improved.json` + `scripts/import-question-bank.mjs` — hand-edited bank merged into `questions.js` (330 items; `//` section comments preserved). Run: `node scripts/import-question-bank.mjs` (optional path to JSON).
+- `sw.js` — `SW_VERSION` `7.80 → 7.81` after question-bank merge.
 
 ---
 
