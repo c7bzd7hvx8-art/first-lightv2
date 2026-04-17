@@ -4,6 +4,35 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Main site footer: add feedback mailto link
+
+Small launch-polish follow-up: added a direct email feedback route on the main site footer so users can reach us without entering the diary first.
+
+- `index.html` — support-card footer links now include **Send feedback**:
+  - `mailto:firstlightdeer@gmail.com?subject=First%20Light%20feedback`
+  - inserted before Privacy/Terms to keep legal links intact while surfacing the action link.
+- `sw.js` — `SW_VERSION` `7.75 → 7.76` so cached installs receive the updated footer promptly.
+
+No behaviour or data-model changes; contact UX only.
+
+---
+
+## 2026-04-17 — Form UX: remove calibre chips, switch dropdown popup to light scheme
+
+Quick polish request after visual review of the New Entry form:
+
+- **Calibre chips removed** — user wanted calibre selection to be dropdown-only.
+  - `diary.html`: removed the `#cal-presets` chip container from Shot Details.
+  - `diary.css`: removed `.cal-presets` / `.cal-preset-chip*` styles.
+  - `diary.js`: removed chip wiring and storage logic (`cal-preset-pick` action, recent-calibre localStorage helpers, chip render/pick functions, and save-time preset updates). New/edit flows now only set/read calibre through the existing select/custom field path.
+- **Dropdown colour scheme fixed** — popup option rows were rendering as dark-on-dark in Windows.
+  - `diary.css`: changed global native `option` styling from dark background to a light scheme (`white` rows with bark text, pale moss selected row), which keeps open dropdown menus readable and visually consistent with the light form controls.
+- `sw.js`: `SW_VERSION` `7.74 → 7.75` so existing installs pick up the form/CSS changes immediately.
+
+No behavior change to stored entry data; this is UI/interaction cleanup only.
+
+---
+
 ## 2026-04-17 — Settings: self-serve display-name + password changes
 
 User asked whether Cull Diary currently lets someone change their name after signup. It didn't: name was effectively write-once (`auth.user_metadata.full_name` at sign-up) and the settings card only had sign-out / delete actions. We shipped both requested profile actions in-app: **Edit display name** and **Change password**, with explicit confirmation that historical entry shooter text should not be rewritten.

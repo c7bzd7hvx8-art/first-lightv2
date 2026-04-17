@@ -900,7 +900,6 @@ function initDiaryFlUi() {
         closeSummaryFilterModal();
         break;
       case 'sign-out': signOut(); break;
-      case 'cal-preset-pick': pickCalibrePreset(el.getAttribute('data-cal-val')); break;
       case 'open-signout-all': openSignOutAllModal(); break;
       case 'close-signout-all': closeSignOutAllModal(); break;
       case 'confirm-signout-all': confirmSignOutAll(); break;
@@ -3066,7 +3065,7 @@ async function openNewEntry() {
   var _get = function(t){ return _ukParts.find(function(p){ return p.type===t; }).value; };
   document.getElementById('f-date').value = _get('year') + '-' + _get('month') + '-' + _get('day');
   document.getElementById('f-time').value = _get('hour') + ':' + _get('minute');
-  ['f-location','f-dist','f-notes'].forEach(function(id){ document.getElementById(id).value = ''; }); setCalibreValue(''); renderCalibrePresets();
+  ['f-location','f-dist','f-notes'].forEach(function(id){ document.getElementById(id).value = ''; }); setCalibreValue('');
   var shooterEl = document.getElementById('f-shooter');
   if (shooterEl) { shooterEl.value = 'Self'; shooterEl.classList.add('shooter-self'); }
   var destEl = document.getElementById('f-destination');
@@ -3142,7 +3141,7 @@ async function openEditEntry(id) {
     clearPinnedLocation();
   }
   document.getElementById('f-wt').value = hasValue(e.weight_kg) ? String(e.weight_kg) : '';
-  setCalibreValue(e.calibre || ''); renderCalibrePresets();
+  setCalibreValue(e.calibre || '');
   document.getElementById('f-dist').value = hasValue(e.distance_m) ? String(e.distance_m) : '';
   setPlacementValue(e.shot_placement || '');
   document.getElementById('f-age').value = normalizeAgeClassLabel(e.age_class || '');
@@ -3270,87 +3269,6 @@ function resetPhotoSlot() {
 var lastGpsLat = null, lastGpsLng = null;
 
 
-// ── Calibre presets (per-user recent list) ────────────────────────
-// We store a rolling list of the calibres the user has actually saved in
-// localStorage, keyed by auth user id. Rendering up to 5 as chips above the
-// dropdown means the normal case (one stalker, one rifle this season) is
-// a single tap. Keyed per-user so a shared device / syndicate-owned iPad
-// doesn't leak one stalker's calibres into another's form.
-var CALIBRE_PRESETS_MAX_STORED = 10;   // keep the last 10 in storage
-var CALIBRE_PRESETS_MAX_SHOWN = 5;     // render at most 5 chips
-
-function calibrePresetsKey() {
-  var id = (currentUser && currentUser.id) ? currentUser.id : 'anon';
-  return 'fl_calibre_presets_' + id;
-}
-
-function loadCalibrePresets() {
-  try {
-    var raw = localStorage.getItem(calibrePresetsKey());
-    if (!raw) return [];
-    var arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr.filter(function(x) { return typeof x === 'string' && x.trim(); }) : [];
-  } catch (_) { return []; }
-}
-
-function saveCalibrePresets(list) {
-  try {
-    localStorage.setItem(calibrePresetsKey(), JSON.stringify(list.slice(0, CALIBRE_PRESETS_MAX_STORED)));
-  } catch (_) { /* quota — non-fatal */ }
-}
-
-/**
- * Move `calibre` to the front of the saved list (or add if new). Called from
- * saveEntry() on a successful save so only calibres that actually shipped to
- * the cloud end up as presets — typos mid-form don't pollute the chip row.
- */
-function rememberCalibrePreset(calibre) {
-  if (!calibre) return;
-  var c = String(calibre).trim();
-  if (!c) return;
-  var list = loadCalibrePresets();
-  // Case-insensitive dedupe on the stored list (".243 Win" vs ".243 win").
-  var lc = c.toLowerCase();
-  list = list.filter(function(x) { return String(x).toLowerCase() !== lc; });
-  list.unshift(c);
-  saveCalibrePresets(list);
-  renderCalibrePresets();
-}
-
-/**
- * Render (up to) CALIBRE_PRESETS_MAX_SHOWN chips above the calibre select.
- * Marks the current selection with `.is-on` so the user can see which one
- * matches what's in the form. Hides the container when empty so first-use
- * users don't see a blank area.
- */
-function renderCalibrePresets() {
-  var wrap = document.getElementById('cal-presets');
-  if (!wrap) return;
-  var presets = loadCalibrePresets();
-  if (!presets.length) {
-    wrap.style.display = 'none';
-    wrap.innerHTML = '';
-    return;
-  }
-  var current = getCalibreValue();
-  var currentLc = String(current || '').toLowerCase();
-  var shown = presets.slice(0, CALIBRE_PRESETS_MAX_SHOWN);
-  wrap.innerHTML = shown.map(function(c) {
-    var on = String(c).toLowerCase() === currentLc ? ' is-on' : '';
-    return '<button type="button" class="cal-preset-chip' + on + '" data-fl-action="cal-preset-pick" data-cal-val="' + esc(c) + '">'
-      + (on ? '<span class="cal-preset-chip-ic" aria-hidden="true">✓</span>' : '')
-      + esc(c)
-      + '</button>';
-  }).join('');
-  wrap.style.display = 'flex';
-}
-
-function pickCalibrePreset(val) {
-  if (!val) return;
-  setCalibreValue(val);
-  renderCalibrePresets();
-}
-
 function handleCalibreSelect(sel) {
   var custom = document.getElementById('f-calibre');
   if (sel.value === '__custom__') {
@@ -3363,9 +3281,6 @@ function handleCalibreSelect(sel) {
     custom.value = sel.value;
     sel.classList.toggle('has-val', sel.value !== '');
   }
-  // Re-render chips so the active "is-on" tick tracks whatever the user
-  // just picked from the native select.
-  renderCalibrePresets();
 }
 
 function getCalibreValue() {
@@ -3613,10 +3528,6 @@ async function saveEntry() {
     // Keep the season-dropdown cache fresh so a backdated entry grows the
     // dropdown without a full re-probe on the next loadEntries() call.
     if (payload && payload.date) extendSeasonCacheForDate(payload.date);
-    // Bubble the saved calibre to the top of the per-user presets so the
-    // next new-entry form shows it as a one-tap chip.
-    if (payload && payload.calibre) rememberCalibrePreset(payload.calibre);
-
     // Orphan-photo cleanup: if this was an edit that replaced or removed the
     // original photo, delete the old storage object. Best-effort only — a
     // failure here doesn't roll back the save, just leaves one orphan behind.
@@ -6085,7 +5996,6 @@ async function syncOfflineQueue() {
         var result = await sb.from('cull_entries').insert(payload).select('id');
         if (result.error) throw result.error;
         if (payload && payload.date) extendSeasonCacheForDate(payload.date);
-        if (payload && payload.calibre) rememberCalibrePreset(payload.calibre);
         synced++;
         if (entry._photoStripped) photosStripped++;
 

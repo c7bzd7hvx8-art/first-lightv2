@@ -9,13 +9,12 @@ body{background:var(--deep);font-family:'DM Sans',sans-serif;color:var(--bark);m
 .view{display:none;flex-direction:column;min-height:100vh;}
 .view.active{display:flex;}
 button{font-family:'DM Sans',sans-serif;}
-/* Native <option> legibility — the OS shell renders the open dropdown
-   and ignores most of our <select>'s styles. Without this the currently
-   highlighted / selected row on the dark season-pill and syndicate
-   selects came out as near-invisible dark-on-dark on Windows. One rule
-   covers every <select> in the app. */
-option{background-color:#1a1a1a;color:rgba(255,255,255,0.92);}
-option:checked{background-color:var(--moss);color:#fff;}
+/* Native <option> legibility — browsers paint popup menus via the OS shell
+   and largely ignore <select> styling. Keep option rows high-contrast and
+   light so form dropdowns are readable on Windows regardless of browser
+   theme heuristics. */
+option{background-color:#fff;color:var(--bark);}
+option:checked{background-color:#e8f2dc;color:#15370a;}
 
 /* ── Nav ── */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:#111a0b;border-top:1px solid rgba(255,255,255,0.07);display:flex;z-index:200;}
@@ -654,26 +653,6 @@ body.in-select-mode .entries{padding-bottom:104px;}
 .ff input,.ff select,.ff textarea{width:100%;padding:11px 12px;border:1.5px solid var(--stone);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--bark);background:white;outline:none;-webkit-appearance:none;}
 .ff input:focus,.ff select:focus,.ff textarea:focus{border-color:var(--moss);}
 .ff textarea{resize:none;height:80px;line-height:1.5;}
-/* ── Calibre presets (recent chips) ──
-   Most stalkers use one or two calibres across a season (one rifle per ground
-   is common). The structured dropdown is accurate but slow — chips of the
-   user's actual recent calibres turn the normal case into one tap. Rendered
-   above the dropdown, hidden until the user has at least one saved calibre. */
-.cal-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
-.cal-preset-chip{
-  display:inline-flex;align-items:center;gap:5px;
-  padding:6px 10px;border-radius:999px;
-  background:rgba(90,122,48,0.08);
-  border:1.5px solid rgba(90,122,48,0.25);
-  color:var(--deep);
-  font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;
-  cursor:pointer;line-height:1;
-}
-.cal-preset-chip:hover{background:rgba(90,122,48,0.14);border-color:rgba(90,122,48,0.4);}
-.cal-preset-chip.is-on{background:var(--moss);border-color:var(--deep);color:#fff;}
-.cal-preset-chip:focus-visible{outline:2px solid var(--moss);outline-offset:2px;}
-.cal-preset-chip-ic{font-size:9px;opacity:0.85;}
-
 /* ── Shot placement select ── */
 .sp-sel-wrap{position:relative;}
 .sp-sel-wrap::after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--muted);pointer-events:none;}
