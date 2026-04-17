@@ -21,22 +21,29 @@
 //     • buildShooterStats(entries)       — renders #shooter-card / #shooter-chart
 //     • buildDestinationStats(entries)   — renders #destination-card / #destination-chart
 //     • buildTimeOfDayStats(entries)     — renders #time-card / #time-chart
-//     Each hides its card when there is no data worth showing (all-Self / empty
-//     destinations / no timed entries).
+//
+//   Larger DOM paint wrappers (Commit N):
+//     • normalizeAgeClassLabel(label)    — legacy label migration (pure)
+//     • buildCalibreDistanceStats(entries)       — renders #calibre-card /
+//                                          #calibre-chart AND #distance-card /
+//                                          #distance-chart
+//     • buildAgeStats(entries)           — renders #age-card / #age-chart
+//     • buildTrendsChart(entries, opts)  — renders #trends-card / #trends-chart
+//                                          opts.currentSeason — the currently
+//                                          selected season key; the card is
+//                                          hidden unless it equals '__all__'
+//     • buildGroundStats(entries)        — renders #ground-card / #ground-chart
+//
+//   Every paint wrapper hides its card when there is no data worth showing.
 //
 // Explicitly *not* in this module (stays in diary.js for now):
-//   • buildCalibreDistanceStats, buildAgeStats, buildTrendsChart,
-//     buildGroundStats — they mix aggregation, HTML, and DOM writes; their
-//     pure halves are worth extracting but are larger and touch more cross-
-//     references (normalizeAgeClassLabel, buildSeasonFromEntry, currentSeason,
-//     Chart.js). Queued for Commit N.
 //   • buildStats orchestrator — Commit O.
 //
 // Data-table + aggregator functions are pure. The DOM paint wrappers touch
 // `document` and are tested with a small in-memory DOM stub.
 // =============================================================================
 
-import { esc } from '../lib/fl-pure.mjs';
+import { esc, seasonLabel, buildSeasonFromEntry } from '../lib/fl-pure.mjs';
 
 // ── Shared palettes / age labels ──────────────────────────────────────────
 
@@ -302,5 +309,347 @@ export function buildTimeOfDayStats(entries) {
       + '<div class="bar-cnt">'+agg.counts[j]+'</div>'
       + '</div>';
   }
+  chart.innerHTML = html;
+}
+
+// ── normalizeAgeClassLabel ────────────────────────────────────────────────
+// Historical data shim. Older entries wrote "Calf / Kid" (pre-fawn) before
+// we added Roe to the species list; the stored strings are compared against
+// AGE_CLASSES lookup keys, so a label that drifted from the canonical list
+// silently disappears from age-breakdown buckets. Widening the canonical
+// name fixes display retroactively without a data migration.
+export function normalizeAgeClassLabel(ageClass) {
+  if (ageClass === 'Calf / Kid') return 'Calf / Kid / Fawn';
+  return ageClass;
+}
+
+// ── buildCalibreDistanceStats ─────────────────────────────────────────────
+// Two cards in one function because the distance panel depends on the same
+// calibre filter and reuses calibre averages. The top-6 rule on calibres
+// keeps the bar chart readable on mobile; a stalker running 9 different
+// rounds is rare, and when it does happen the long tail is aggregated into
+// the per-species distance chart below.
+export function buildCalibreDistanceStats(entries) {
+  // ── Calibre chart ──
+  var calCard = document.getElementById('calibre-card');
+  var calChart = document.getElementById('calibre-chart');
+  var calEntries = entries.filter(function(e){ return e.calibre; });
+
+  if (calEntries.length === 0) {
+    calCard.style.display = 'none';
+  } else {
+    calCard.style.display = 'block';
+    var calCount = {}, calDist = {};
+    calEntries.forEach(function(e) {
+      var c = e.calibre.trim();
+      calCount[c] = (calCount[c]||0) + 1;
+      if (e.distance_m) {
+        if (!calDist[c]) calDist[c] = [];
+        calDist[c].push(e.distance_m);
+      }
+    });
+    var sorted = Object.keys(calCount).sort(function(a,b){ return calCount[b]-calCount[a]; });
+    var maxCnt = calCount[sorted[0]] || 1;
+
+    var html = '';
+    sorted.slice(0,6).forEach(function(cal, i) {
+      var cnt = calCount[cal];
+      var pct = Math.round(cnt/maxCnt*100);
+      var avgDist = calDist[cal] && calDist[cal].length
+        ? Math.round(calDist[cal].reduce(function(s,v){return s+v;},0)/calDist[cal].length)
+        : null;
+      html += '<div class="cal-row">'
+        + '<div class="cal-name">' + esc(cal) + '</div>'
+        + '<div class="cal-bar-wrap"><div class="cal-bar" style="width:'+pct+'%;background:'+CAL_COLORS[i%CAL_COLORS.length]+';"></div></div>'
+        + '<div class="cal-cnt">' + cnt + '</div>'
+        + '<div class="cal-avg-lbl">' + (avgDist ? avgDist+'m' : '–') + '</div>'
+        + '</div>';
+    });
+    calChart.innerHTML = html;
+  }
+
+  // ── Distance chart ──
+  var distCard = document.getElementById('distance-card');
+  var distChart = document.getElementById('distance-chart');
+  var distEntries = entries.filter(function(e){ return e.distance_m && e.distance_m > 0; });
+
+  if (distEntries.length === 0) {
+    distCard.style.display = 'none';
+  } else {
+    distCard.style.display = 'block';
+
+    var totalDist = distEntries.reduce(function(s,e){ return s+e.distance_m; }, 0);
+    var avgDist = Math.round(totalDist / distEntries.length);
+
+    var spDist = {};
+    distEntries.forEach(function(e) {
+      if (!spDist[e.species]) spDist[e.species] = [];
+      spDist[e.species].push(e.distance_m);
+    });
+    var spAvgs = Object.keys(spDist).map(function(sp) {
+      var vals = spDist[sp];
+      return { sp:sp, avg: Math.round(vals.reduce(function(s,v){return s+v;},0)/vals.length) };
+    }).sort(function(a,b){ return b.avg - a.avg; });
+    var maxAvg = spAvgs.length ? spAvgs[0].avg : 1;
+
+    // Range bands — chosen to align with typical UK deer-stalking ranges:
+    // 0-50m covers the bulk of woodland / high-seat shots; 51-100m is open
+    // ride / field margin; 101-150m is open-hill; 150m+ flags the long shots
+    // that merit extra scrutiny on a course-book review. Colours go from
+    // moss (safe) through gold and orange to red (long).
+    var bands = [
+      { label:'0 – 50m',    min:0,   max:50,  color:'var(--moss)' },
+      { label:'51 – 100m',  min:51,  max:100, color:'var(--gold)' },
+      { label:'101 – 150m', min:101, max:150, color:'#f57f17' },
+      { label:'150m+',      min:151, max:9999,color:'#c62828' },
+    ];
+    var bandCounts = bands.map(function(b) {
+      return distEntries.filter(function(e){ return e.distance_m>=b.min && e.distance_m<=b.max; }).length;
+    });
+    var totalBand = distEntries.length;
+
+    var html = '<div class="dist-avg-box">'
+      + '<div><div class="dist-avg-val">' + avgDist + '</div><div class="dist-avg-unit">metres avg</div></div>'
+      + '<div><div class="dist-avg-lbl">Overall average</div>'
+      + '<div class="dist-avg-sub">Based on ' + distEntries.length + ' entr' + (distEntries.length===1?'y':'ies') + ' with<br>distance recorded</div></div>'
+      + '</div>';
+
+    if (spAvgs.length > 1) {
+      html += '<div class="scard-sub-t">By species</div>';
+      spAvgs.forEach(function(s) {
+        var clr = SP_COLORS_D[s.sp] || '#5a7a30';
+        var pct = Math.round(s.avg/maxAvg*100);
+        html += '<div class="dist-sp-row">'
+          + '<div class="dist-sp-dot" style="background:'+clr+';"></div>'
+          + '<div class="dist-sp-name">'+s.sp+'</div>'
+          + '<div class="dist-bar-wrap"><div class="dist-bar" style="width:'+pct+'%;background:'+clr+';"></div></div>'
+          + '<div class="dist-val">'+s.avg+'m</div>'
+          + '</div>';
+      });
+    }
+
+    html += '<div class="scard-sub-t" style="margin-top:14px;">Distance bands</div>'
+      + '<div class="range-grid">';
+    bands.forEach(function(b, i) {
+      var cnt = bandCounts[i];
+      var pct = totalBand ? Math.round(cnt/totalBand*100) : 0;
+      html += '<div class="range-cell">'
+        + '<div class="range-band">'+b.label+'</div>'
+        + '<div class="range-cnt">'+cnt+'</div>'
+        + '<div class="range-pct">'+pct+'% of culls</div>'
+        + '<div class="range-bar"><div class="range-bar-fill" style="width:'+pct+'%;background:'+b.color+';"></div></div>'
+        + '</div>';
+    });
+    html += '</div>';
+
+    distChart.innerHTML = html;
+  }
+}
+
+// ── buildAgeStats ─────────────────────────────────────────────────────────
+// Three layers in one card:
+//   1. Per-age-class bars (one row per AGE_CLASSES entry, in canonical order)
+//   2. Juvenile / Adult / Mature summary pills
+//   3. If more than one species has age data, a mini per-species breakdown
+//
+// `normalizeAgeClassLabel` is applied when reading `e.age_class` so legacy
+// "Calf / Kid" entries are bucketed correctly. Entries without an age_class
+// are excluded from the totals used for the bars but counted separately in
+// the "Not recorded" pill when non-zero.
+export function buildAgeStats(entries) {
+  var card  = document.getElementById('age-card');
+  var chart = document.getElementById('age-chart');
+  var aged  = entries.filter(function(e){ return e.age_class; });
+
+  if (aged.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  var counts = {};
+  AGE_CLASSES.forEach(function(a){ counts[a] = 0; });
+  aged.forEach(function(e){
+    var ageKey = normalizeAgeClassLabel(e.age_class);
+    if (counts[ageKey] !== undefined) counts[ageKey]++;
+  });
+  var total = aged.length;
+  var maxCnt = Math.max.apply(null, AGE_CLASSES.map(function(a){ return counts[a]; }).concat([1]));
+
+  var html = '';
+  AGE_CLASSES.forEach(function(ac, i) {
+    var cnt = counts[ac];
+    var pct = total ? Math.round(cnt/total*100) : 0;
+    var barPct = Math.round(cnt/maxCnt*100);
+    html += '<div class="age-row">'
+      + '<div class="age-lbl">' + ac + '</div>'
+      + '<div class="age-bar-wrap"><div class="age-bar" style="width:'+barPct+'%;background:'+AGE_COLORS[i]+';"></div></div>'
+      + '<div class="age-cnt">' + cnt + '</div>'
+      + '<div class="age-pct">' + (cnt ? pct+'%' : '–') + '</div>'
+      + '</div>';
+  });
+
+  var notRecorded = entries.length - aged.length;
+  html += '<div class="age-summary">';
+  Object.keys(AGE_GROUPS).forEach(function(grp) {
+    var grpCnt = AGE_GROUPS[grp].reduce(function(s,a){ return s+(counts[a]||0); }, 0);
+    var grpPct = total ? Math.round(grpCnt/total*100) : 0;
+    var dotClr = grp==='Juvenile' ? '#7adf7a' : grp==='Adult' ? '#c8a84b' : '#f57f17';
+    html += '<div class="age-pill">'
+      + '<div class="age-pill-dot" style="background:'+dotClr+';"></div>'
+      + '<div class="age-pill-txt">'+grp+'</div>'
+      + '<div class="age-pill-cnt">'+grpCnt+' · '+grpPct+'%</div>'
+      + '</div>';
+  });
+  if (notRecorded > 0) {
+    html += '<div class="age-pill">'
+      + '<div class="age-pill-dot" style="background:#ccc;"></div>'
+      + '<div class="age-pill-txt">Not recorded</div>'
+      + '<div class="age-pill-cnt">'+notRecorded+'</div>'
+      + '</div>';
+  }
+  html += '</div>';
+
+  var spSeen = {};
+  aged.forEach(function(e){ spSeen[e.species] = true; });
+  var species = Object.keys(spSeen);
+
+  if (species.length > 1) {
+    html += '<div class="scard-sub-t" style="margin-top:14px;">By species</div>';
+    species.forEach(function(sp) {
+      var spEntries = aged.filter(function(e){ return e.species === sp; });
+      var spCounts = {};
+      AGE_CLASSES.forEach(function(a){ spCounts[a] = 0; });
+      spEntries.forEach(function(e){
+        var ageKey = normalizeAgeClassLabel(e.age_class);
+        if (spCounts[ageKey] !== undefined) spCounts[ageKey]++;
+      });
+      var spMax = Math.max.apply(null, AGE_CLASSES.map(function(a){ return spCounts[a]; }).concat([1]));
+      var clr = SP_COLORS_D[sp] || '#5a7a30';
+
+      html += '<div class="age-sp-section">';
+      html += '<div class="age-sp-hdr"><div class="age-sp-dot" style="background:'+clr+';"></div><div class="age-sp-nm">'+sp+'</div></div>';
+      AGE_CLASSES.forEach(function(ac, i) {
+        var cnt = spCounts[ac];
+        if (!cnt) return;
+        var barPct = Math.round(cnt/spMax*100);
+        html += '<div class="age-mini-row">'
+          + '<div class="age-mini-lbl">'+ac+'</div>'
+          + '<div class="age-mini-bw"><div class="age-mini-bf" style="width:'+barPct+'%;background:'+AGE_COLORS[i]+';"></div></div>'
+          + '<div class="age-mini-cnt">'+cnt+'</div>'
+          + '</div>';
+      });
+      html += '</div>';
+    });
+  }
+
+  chart.innerHTML = html;
+}
+
+// ── buildTrendsChart ──────────────────────────────────────────────────────
+// Card is only relevant when the user is looking at the whole history (the
+// "__all__" season), since per-season the chart has nothing to compare.
+// The caller is responsible for passing the currently selected season; we
+// don't read globals here. Hides silently when there are fewer than 2
+// seasons' worth of data (no useful trend yet).
+//
+// @param {Array} entries  Every entry the user has access to.
+// @param {Object} opts
+// @param {string} opts.currentSeason  e.g. '2025-26' or '__all__'.
+export function buildTrendsChart(entries, opts) {
+  var card  = document.getElementById('trends-card');
+  var chart = document.getElementById('trends-chart');
+  if (!card || !chart) return;
+
+  var currentSeason = opts && opts.currentSeason;
+  if (currentSeason !== '__all__') { card.style.display = 'none'; return; }
+
+  var bySeason = {};
+  entries.forEach(function(e) {
+    var s = buildSeasonFromEntry(e.date);
+    if (!bySeason[s]) bySeason[s] = { count: 0, totalWt: 0, wtN: 0, species: {} };
+    bySeason[s].count++;
+    if (e.weight_kg) { bySeason[s].totalWt += parseFloat(e.weight_kg); bySeason[s].wtN++; }
+    bySeason[s].species[e.species] = true;
+  });
+
+  var keys = Object.keys(bySeason).sort();
+  if (keys.length < 2) { card.style.display = 'none'; return; }
+  // Trim to the most recent 5 seasons — a longer history turns the bar
+  // chart into an illegible strip on mobile, and older seasons are less
+  // actionable anyway.
+  if (keys.length > 5) keys = keys.slice(keys.length - 5);
+
+  card.style.display = 'block';
+
+  var maxCount = Math.max.apply(null, keys.map(function(k){ return bySeason[k].count; }));
+
+  var html = '<div style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Total cull per season</div>';
+  keys.forEach(function(k) {
+    var d = bySeason[k];
+    var pct = Math.round(d.count / maxCount * 100);
+    var avgWt = d.wtN > 0 ? (d.totalWt / d.wtN).toFixed(1) : '–';
+    html += '<div class="bar-row">'
+      + '<div class="bar-lbl">' + seasonLabel(k) + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:linear-gradient(90deg,#5a7a30,#7adf7a);"></div></div>'
+      + '<div class="bar-cnt">' + d.count + '</div>'
+      + '</div>';
+    html += '<div style="font-size:9px;color:rgba(0,0,0,0.35);margin:-2px 0 6px 0;padding-left:2px;">'
+      + 'Avg weight: ' + avgWt + ' kg · ' + Object.keys(d.species).length + ' species'
+      + '</div>';
+  });
+
+  chart.innerHTML = html;
+}
+
+// ── buildGroundStats ──────────────────────────────────────────────────────
+// Renders the per-ground cull-count card. Entries with no ground are
+// bucketed as "Untagged" and always rendered in grey at the bottom (never
+// counted toward the max or sort), so they don't visually compete with
+// real grounds. The card hides when zero tagged grounds are present; if
+// every entry is untagged, the card is still hidden (nothing to compare).
+export function buildGroundStats(entries) {
+  var card  = document.getElementById('ground-card');
+  var chart = document.getElementById('ground-chart');
+  if (!card || !chart) return;
+
+  var counts = {};
+  entries.forEach(function(e) {
+    var g = (e.ground && e.ground.trim()) ? e.ground.trim() : null;
+    if (g) counts[g] = (counts[g]||0) + 1;
+    else   counts['__untagged__'] = (counts['__untagged__']||0) + 1;
+  });
+
+  var grounds = Object.keys(counts).filter(function(g){ return g !== '__untagged__'; });
+
+  if (grounds.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  grounds.sort(function(a,b){ return counts[b]-counts[a]; });
+  var maxCnt = Math.max.apply(null, grounds.map(function(g){ return counts[g]; }).concat([1]));
+
+  var html = '';
+  grounds.forEach(function(g, i) {
+    var cnt = counts[g];
+    var pct = Math.round(cnt/maxCnt*100);
+    // Top-1 ground gets the "winner" green gradient; everyone else gets
+    // gold. Purely decorative — the count column carries the real info.
+    var barClr = i === 0
+      ? 'linear-gradient(90deg,#5a7a30,#7adf7a)'
+      : 'linear-gradient(90deg,#c8a84b,#f0c870)';
+    html += '<div class="bar-row">'
+      + '<div class="bar-lbl">' + esc(g) + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+barClr+';"></div></div>'
+      + '<div class="bar-cnt">'+cnt+'</div>'
+      + '</div>';
+  });
+
+  if (counts['__untagged__']) {
+    var uCnt = counts['__untagged__'];
+    var uPct = Math.round(uCnt/maxCnt*100);
+    html += '<div class="bar-row">'
+      + '<div class="bar-lbl" style="color:var(--muted);font-style:italic;">Untagged</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+uPct+'%;background:#e0dcd6;"></div></div>'
+      + '<div class="bar-cnt" style="color:var(--muted);">'+uCnt+'</div>'
+      + '</div>';
+  }
+
   chart.innerHTML = html;
 }

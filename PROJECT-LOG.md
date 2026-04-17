@@ -4,6 +4,31 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Phase 2 / Commit N: age / calibre+distance / trends / ground paint wrappers → `modules/stats.mjs`
+
+Second stats-side extraction. The four larger DOM paint wrappers from the Stats tab's "More" section now live in the stats module alongside the small wrappers from Commit M. Also moves the tiny legacy-label helper (`normalizeAgeClassLabel`) since it's effectively a member of the age-class family.
+
+### What moved
+- `buildCalibreDistanceStats(entries)` — renders two cards in one function (calibre top-6 + distance overall-avg / per-species / bands).
+- `buildAgeStats(entries)` — renders per-age-class bars, J/A/M summary pills, optional "By species" mini-breakdown. Uses `normalizeAgeClassLabel` internally to fold legacy "Calf / Kid" entries into the canonical "Calf / Kid / Fawn" bucket.
+- `buildTrendsChart(entries, { currentSeason })` — only renders when currentSeason === '__all__' and ≥2 seasons of data are present; otherwise hides. **New signature** — `currentSeason` is now a dependency-injected opts arg rather than a closure over the diary.js global (the module reads zero diary.js state). One diary.js call site updated to pass it explicitly.
+- `buildGroundStats(entries)` — one row per tagged ground sorted by count desc, untagged entries rendered grey at the bottom.
+- `normalizeAgeClassLabel(label)` — pure 2-line helper.
+
+### Changes
+- `modules/stats.mjs` (+296 lines → now 660 lines): 5 new exports (total 18). Imports `esc`, `seasonLabel`, `buildSeasonFromEntry` from `lib/fl-pure.mjs`. Header comment updated to reflect the Commit N additions and the DI signature on trends.
+- `diary.js` (~300 lines removed): four `function build*Stats` + `function normalizeAgeClassLabel` bodies deleted; 5 new names added to the existing stats.mjs import block. Call sites at L~3868 unchanged except `buildTrendsChart(entries)` → `buildTrendsChart(entries, { currentSeason: currentSeason })`. The other existing call site (`document.getElementById('f-age').value = normalizeAgeClassLabel(...)` at L~2940) now resolves via the new import. Two orphan section-header comments folded into breadcrumb comments pointing at the module.
+- `tests/stats.test.mjs` (+22 tests, 55 total): covers `normalizeAgeClassLabel` (legacy widening, canonical passthrough, null / empty / unknown), `buildCalibreDistanceStats` (hide empty, top-6 slice + desc sort, per-calibre avg, overall-avg + bands, per-species section visibility), `buildAgeStats` (hide empty, canonical-order rows, legacy label bucketising, pills + not-recorded, by-species visibility rules), `buildTrendsChart` (hide per-season, hide <2 seasons, 5-row cap + weight fallback), `buildGroundStats` (missing-element early-return, all-untagged hide, sort + palette, untagged row ordering, XSS escape).
+- `sw.js`: SW_VERSION 7.64 → 7.65.
+
+### Tests
+189/189 green across the whole suite. `stats.test.mjs` alone: 55 tests (was 33; +22 new). No lint errors.
+
+### Phase-2-stats progress
+2/3 — **Commit N shipped.** Only `buildStats` orchestrator (~169 lines at L~3721) remains. Branch `feat/modularise-phase-2-stats` still local; push happens after Commit O.
+
+---
+
 ## 2026-04-16 — Phase 2 / Commit M: shooter / destination / time-of-day paint wrappers → `modules/stats.mjs`
 
 First of three stats-side commits in the new `feat/modularise-phase-2-stats` branch. The three smallest DOM paint wrappers from the Stats tab's "More" section are now in the stats module alongside their aggregators (which were extracted back in Commit H). The bodies used to live at ~L6237 in `diary.js`.

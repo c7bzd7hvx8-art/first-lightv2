@@ -22,7 +22,12 @@ import {
   categorizeHourToBucket,
   buildShooterStats,
   buildDestinationStats,
-  buildTimeOfDayStats
+  buildTimeOfDayStats,
+  normalizeAgeClassLabel,
+  buildCalibreDistanceStats,
+  buildAgeStats,
+  buildTrendsChart,
+  buildGroundStats
 } from '../modules/stats.mjs';
 
 // ── Data-table invariants ──────────────────────────────────────────────────
@@ -346,5 +351,305 @@ test('buildTimeOfDayStats skips zero-count buckets and paints the rest', () => {
     // known-safe constants so the function does not re-escape them).
     assert.match(html, /Dawn/);
     assert.match(html, /Midday/);
+  } finally { restore(); }
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Commit N — normalizeAgeClassLabel + four larger paint wrappers
+// ═════════════════════════════════════════════════════════════════════════
+
+// ── normalizeAgeClassLabel ─────────────────────────────────────────────────
+test('normalizeAgeClassLabel widens legacy "Calf / Kid" to the canonical Fawn label', () => {
+  assert.equal(normalizeAgeClassLabel('Calf / Kid'), 'Calf / Kid / Fawn');
+});
+
+test('normalizeAgeClassLabel passes all canonical AGE_CLASSES through untouched', () => {
+  for (const ac of AGE_CLASSES) {
+    assert.equal(normalizeAgeClassLabel(ac), ac);
+  }
+});
+
+test('normalizeAgeClassLabel leaves unknown / empty / null labels unchanged', () => {
+  assert.equal(normalizeAgeClassLabel(''), '');
+  assert.equal(normalizeAgeClassLabel('Some Other Label'), 'Some Other Label');
+  assert.equal(normalizeAgeClassLabel(null), null);
+  assert.equal(normalizeAgeClassLabel(undefined), undefined);
+});
+
+// ── buildCalibreDistanceStats ──────────────────────────────────────────────
+test('buildCalibreDistanceStats hides both cards when no calibre or distance data', () => {
+  const restore = installDomStub(['calibre-card', 'calibre-chart', 'distance-card', 'distance-chart']);
+  try {
+    buildCalibreDistanceStats([{ species: 'Roe Deer' }]);
+    assert.equal(restore.els['calibre-card'].style.display, 'none');
+    assert.equal(restore.els['distance-card'].style.display, 'none');
+  } finally { restore(); }
+});
+
+test('buildCalibreDistanceStats paints calibre rows sorted by count desc, top-6 only', () => {
+  const restore = installDomStub(['calibre-card', 'calibre-chart', 'distance-card', 'distance-chart']);
+  try {
+    // 7 distinct calibres, uneven counts → top-6 must render in desc count order.
+    const entries = [];
+    const counts = [['.308', 5], ['.243', 4], ['6.5CM', 3], ['.270', 2], ['.223', 1], ['.22-250', 1], ['.30-06', 1]];
+    for (const [c, n] of counts) for (let i = 0; i < n; i++) entries.push({ calibre: c });
+    buildCalibreDistanceStats(entries);
+    assert.equal(restore.els['calibre-card'].style.display, 'block');
+    const html = restore.els['calibre-chart'].innerHTML;
+    const rows = html.match(/class="cal-row"/g) || [];
+    assert.equal(rows.length, 6, 'expected top-6 slice');
+    // First row should be .308 (highest count).
+    const first = html.slice(0, html.indexOf('</div>', html.indexOf('cal-name')) + 6);
+    assert.match(first, /\.308/);
+  } finally { restore(); }
+});
+
+test('buildCalibreDistanceStats shows per-calibre average distance when any entry has one', () => {
+  const restore = installDomStub(['calibre-card', 'calibre-chart', 'distance-card', 'distance-chart']);
+  try {
+    buildCalibreDistanceStats([
+      { calibre: '.308', distance_m: 100 },
+      { calibre: '.308', distance_m: 200 },
+      { calibre: '.243' }, // no distance — should render with '–'
+    ]);
+    const html = restore.els['calibre-chart'].innerHTML;
+    // Avg for .308 is 150m.
+    assert.match(html, /\.308[\s\S]*?150m/);
+    // .243 row gets the em-dash fallback.
+    assert.match(html, /\.243[\s\S]*?–/);
+  } finally { restore(); }
+});
+
+test('buildCalibreDistanceStats paints overall avg + distance bands when distances present', () => {
+  const restore = installDomStub(['calibre-card', 'calibre-chart', 'distance-card', 'distance-chart']);
+  try {
+    buildCalibreDistanceStats([
+      { species: 'Roe Deer', calibre: '.243', distance_m: 40 },   // 0-50m band
+      { species: 'Roe Deer', calibre: '.243', distance_m: 80 },   // 51-100m band
+      { species: 'Roe Deer', calibre: '.243', distance_m: 180 },  // 150m+ band
+    ]);
+    assert.equal(restore.els['distance-card'].style.display, 'block');
+    const html = restore.els['distance-chart'].innerHTML;
+    // Overall avg = round((40+80+180)/3) = 100.
+    assert.match(html, /dist-avg-val">100</);
+    // All four band labels present.
+    assert.match(html, /0 – 50m/);
+    assert.match(html, /51 – 100m/);
+    assert.match(html, /101 – 150m/);
+    assert.match(html, /150m\+/);
+  } finally { restore(); }
+});
+
+test('buildCalibreDistanceStats shows per-species distance section only when >1 species', () => {
+  const restore = installDomStub(['calibre-card', 'calibre-chart', 'distance-card', 'distance-chart']);
+  try {
+    // Single species → no "By species" section.
+    buildCalibreDistanceStats([
+      { species: 'Roe Deer', calibre: '.243', distance_m: 100 },
+      { species: 'Roe Deer', calibre: '.243', distance_m: 50 },
+    ]);
+    assert.equal(restore.els['distance-chart'].innerHTML.includes('By species'), false);
+    // Multi species → section appears.
+    buildCalibreDistanceStats([
+      { species: 'Roe Deer',  calibre: '.243', distance_m: 50 },
+      { species: 'Fallow',    calibre: '.308', distance_m: 150 },
+    ]);
+    assert.match(restore.els['distance-chart'].innerHTML, /By species/);
+  } finally { restore(); }
+});
+
+// ── buildAgeStats ──────────────────────────────────────────────────────────
+test('buildAgeStats hides card when no entry carries an age_class', () => {
+  const restore = installDomStub(['age-card', 'age-chart']);
+  try {
+    buildAgeStats([{ species: 'Roe Deer' }, { species: 'Fallow' }]);
+    assert.equal(restore.els['age-card'].style.display, 'none');
+  } finally { restore(); }
+});
+
+test('buildAgeStats paints one bar row per AGE_CLASSES entry in canonical order', () => {
+  const restore = installDomStub(['age-card', 'age-chart']);
+  try {
+    buildAgeStats([
+      { species: 'Roe Deer', age_class: 'Yearling' },
+      { species: 'Roe Deer', age_class: '2-4 years' },
+      { species: 'Roe Deer', age_class: '9+ years' },
+    ]);
+    assert.equal(restore.els['age-card'].style.display, 'block');
+    const html = restore.els['age-chart'].innerHTML;
+    const rows = html.match(/class="age-row"/g) || [];
+    assert.equal(rows.length, AGE_CLASSES.length,
+      'expected one row per canonical age class even when some have 0 count');
+  } finally { restore(); }
+});
+
+test('buildAgeStats bucketises legacy "Calf / Kid" as "Calf / Kid / Fawn"', () => {
+  const restore = installDomStub(['age-card', 'age-chart']);
+  try {
+    buildAgeStats([
+      { species: 'Roe Deer', age_class: 'Calf / Kid' },     // legacy
+      { species: 'Roe Deer', age_class: 'Calf / Kid / Fawn' },
+    ]);
+    const html = restore.els['age-chart'].innerHTML;
+    // The Calf-row count must be 2 (both entries collapsed into the canonical bucket).
+    // Find the first age-row which is the Calf row (index 0 in AGE_CLASSES).
+    const firstRowEnd = html.indexOf('</div>', html.indexOf('class="age-row"'));
+    const firstRow = html.slice(0, firstRowEnd + 6);
+    // More robust: pick the age-cnt for the Calf row specifically.
+    assert.match(html, /Calf \/ Kid \/ Fawn[\s\S]*?class="age-cnt">2</);
+  } finally { restore(); }
+});
+
+test('buildAgeStats renders Juvenile / Adult / Mature summary pills plus "Not recorded" when applicable', () => {
+  const restore = installDomStub(['age-card', 'age-chart']);
+  try {
+    buildAgeStats([
+      { species: 'Roe Deer', age_class: 'Yearling' },     // Juvenile
+      { species: 'Roe Deer', age_class: '2-4 years' },    // Adult
+      { species: 'Roe Deer', age_class: '9+ years' },     // Mature
+      { species: 'Roe Deer' },                            // Not recorded
+    ]);
+    const html = restore.els['age-chart'].innerHTML;
+    for (const grp of Object.keys(AGE_GROUPS)) {
+      assert.match(html, new RegExp('age-pill-txt">' + grp + '<'));
+    }
+    assert.match(html, /Not recorded/);
+  } finally { restore(); }
+});
+
+test('buildAgeStats hides "By species" mini-section when only one species has age data', () => {
+  const restore = installDomStub(['age-card', 'age-chart']);
+  try {
+    buildAgeStats([
+      { species: 'Roe Deer', age_class: 'Yearling' },
+      { species: 'Roe Deer', age_class: '2-4 years' },
+    ]);
+    assert.equal(restore.els['age-chart'].innerHTML.includes('By species'), false);
+  } finally { restore(); }
+});
+
+test('buildAgeStats shows "By species" mini-section when >1 species has age data', () => {
+  const restore = installDomStub(['age-card', 'age-chart']);
+  try {
+    buildAgeStats([
+      { species: 'Roe Deer', age_class: 'Yearling' },
+      { species: 'Fallow',   age_class: '2-4 years' },
+    ]);
+    const html = restore.els['age-chart'].innerHTML;
+    assert.match(html, /By species/);
+    assert.match(html, /class="age-sp-nm">Roe Deer</);
+    assert.match(html, /class="age-sp-nm">Fallow</);
+  } finally { restore(); }
+});
+
+// ── buildTrendsChart ───────────────────────────────────────────────────────
+test('buildTrendsChart hides card when currentSeason is not __all__', () => {
+  const restore = installDomStub(['trends-card', 'trends-chart']);
+  try {
+    buildTrendsChart([{ date: '2024-08-15' }], { currentSeason: '2024-25' });
+    assert.equal(restore.els['trends-card'].style.display, 'none');
+  } finally { restore(); }
+});
+
+test('buildTrendsChart hides card when fewer than 2 seasons of data', () => {
+  const restore = installDomStub(['trends-card', 'trends-chart']);
+  try {
+    buildTrendsChart(
+      [{ date: '2024-08-15' }, { date: '2024-09-01' }],
+      { currentSeason: '__all__' }
+    );
+    assert.equal(restore.els['trends-card'].style.display, 'none');
+  } finally { restore(); }
+});
+
+test('buildTrendsChart paints a row per season when >=2 seasons present, last-5 window', () => {
+  const restore = installDomStub(['trends-card', 'trends-chart']);
+  try {
+    // 7 seasons of data, one entry each. Should render exactly 5 rows
+    // (the most recent 5) and each row should have a follow-up meta line.
+    const entries = [
+      { date: '2019-08-15', species: 'Roe Deer' },
+      { date: '2020-08-15', species: 'Roe Deer' },
+      { date: '2021-08-15', species: 'Roe Deer' },
+      { date: '2022-08-15', species: 'Roe Deer', weight_kg: '15.5' },
+      { date: '2023-08-15', species: 'Roe Deer', weight_kg: '16.2' },
+      { date: '2024-08-15', species: 'Fallow',   weight_kg: '40.0' },
+      { date: '2025-08-15', species: 'Roe Deer' },
+    ];
+    buildTrendsChart(entries, { currentSeason: '__all__' });
+    assert.equal(restore.els['trends-card'].style.display, 'block');
+    const html = restore.els['trends-chart'].innerHTML;
+    const rows = html.match(/class="bar-row"/g) || [];
+    assert.equal(rows.length, 5, 'should cap at most-recent 5 seasons');
+    // Avg weight line fallback (no weight_kg recorded) shows –.
+    assert.match(html, /Avg weight: – kg/);
+    // Entries with weight_kg show the numeric average.
+    assert.match(html, /Avg weight: 15\.5 kg/);
+  } finally { restore(); }
+});
+
+// ── buildGroundStats ───────────────────────────────────────────────────────
+test('buildGroundStats early-returns when card or chart element is missing', () => {
+  const restore = installDomStub([]);
+  try {
+    buildGroundStats([{ ground: 'Farm A' }]);  // must not throw
+  } finally { restore(); }
+});
+
+test('buildGroundStats hides card when every entry is untagged', () => {
+  const restore = installDomStub(['ground-card', 'ground-chart']);
+  try {
+    buildGroundStats([{}, { ground: '' }, { ground: '  ' }]);
+    assert.equal(restore.els['ground-card'].style.display, 'none');
+  } finally { restore(); }
+});
+
+test('buildGroundStats paints rows sorted desc by count, top ground in green', () => {
+  const restore = installDomStub(['ground-card', 'ground-chart']);
+  try {
+    buildGroundStats([
+      { ground: 'Farm A' }, { ground: 'Farm A' }, { ground: 'Farm A' },  // 3
+      { ground: 'Farm B' }, { ground: 'Farm B' },                         // 2
+      { ground: 'Farm C' },                                               // 1
+    ]);
+    assert.equal(restore.els['ground-card'].style.display, 'block');
+    const html = restore.els['ground-chart'].innerHTML;
+    const rows = html.match(/class="bar-row"/g) || [];
+    assert.equal(rows.length, 3);
+    // Farm A should appear first (top-1), using the green gradient.
+    const firstRowStart = html.indexOf('bar-row');
+    const firstRow = html.slice(firstRowStart, html.indexOf('</div>', html.indexOf('bar-cnt', firstRowStart)) + 6);
+    assert.match(firstRow, /Farm A/);
+    assert.match(firstRow, /#5a7a30/);
+    // Farm B and C are "other", should use the gold gradient.
+    assert.match(html, /Farm B[\s\S]*?#c8a84b/);
+  } finally { restore(); }
+});
+
+test('buildGroundStats renders Untagged row last in grey when untagged entries exist', () => {
+  const restore = installDomStub(['ground-card', 'ground-chart']);
+  try {
+    buildGroundStats([
+      { ground: 'Farm A' },
+      { ground: 'Farm A' },
+      {},
+      { ground: '' },
+    ]);
+    const html = restore.els['ground-chart'].innerHTML;
+    assert.match(html, /Untagged/);
+    // Untagged comes after Farm A in source order.
+    assert.ok(html.indexOf('Untagged') > html.indexOf('Farm A'));
+    // Grey fill colour.
+    assert.match(html, /Untagged[\s\S]*?#e0dcd6/);
+  } finally { restore(); }
+});
+
+test('buildGroundStats escapes hostile ground names', () => {
+  const restore = installDomStub(['ground-card', 'ground-chart']);
+  try {
+    buildGroundStats([{ ground: '<script>x</script>' }]);
+    const html = restore.els['ground-chart'].innerHTML;
+    assert.equal(html.includes('<script>x</script>'), false);
+    assert.match(html, /&lt;script&gt;/);
   } finally { restore(); }
 });

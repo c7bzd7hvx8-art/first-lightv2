@@ -36,12 +36,21 @@ import {
   aggregateShooterStats,
   aggregateDestinationStats,
   aggregateTimeOfDayStats,
-  // Commit M: DOM paint wrappers for the three aggregator-backed cards in
-  // the Stats "More" section. The bodies used to live at ~L6237 here;
-  // after this import they live exclusively in modules/stats.mjs.
+  // Commit M: aggregator-backed paint wrappers (shooter / destination /
+  // time-of-day).
   buildShooterStats,
   buildDestinationStats,
-  buildTimeOfDayStats
+  buildTimeOfDayStats,
+  // Commit N: larger paint wrappers (calibre+distance / age / trends /
+  // ground) plus the tiny legacy-label helper that `buildAgeStats` and the
+  // edit-form share. buildTrendsChart reads the selected season via a
+  // dependency-injected opts arg — the module itself does not see any
+  // diary.js globals.
+  normalizeAgeClassLabel,
+  buildCalibreDistanceStats,
+  buildAgeStats,
+  buildTrendsChart,
+  buildGroundStats
 } from './modules/stats.mjs';
 import {
   buildSimpleDiaryPDF,
@@ -2950,10 +2959,6 @@ async function openEditEntry(id) {
 }
 
 var JUVENILE_LABEL = { 'Red Deer':'Calf', 'Sika':'Calf', 'Roe Deer':'Kid', 'Fallow':'Fawn', 'Muntjac':'Fawn', 'CWD':'Fawn' };
-function normalizeAgeClassLabel(ageClass) {
-  if (ageClass === 'Calf / Kid') return 'Calf / Kid / Fawn';
-  return ageClass;
-}
 
 function updateFormSexLabels(species) {
   var mName = document.querySelector('#sx-m .sx-name');
@@ -3865,7 +3870,7 @@ function buildStats(speciesFilter) {
   buildShooterStats(entries);
   buildDestinationStats(entries);
   buildTimeOfDayStats(entries);
-  buildTrendsChart(entries);
+  buildTrendsChart(entries, { currentSeason: currentSeason });
   buildGroundStats(entries);
 
   // Cull map init is scheduled at the top of buildStats (see comment there).
@@ -5573,219 +5578,14 @@ function renderCullMapPins() {
   setTimeout(function(){ if(cullMap) cullMap.invalidateSize(); }, 100);
 }
 
-// ── Calibre & Distance Stats ─────────────────────────────────
-// CAL_COLORS and SP_COLORS_D moved to modules/stats.mjs (Commit H).
-
-function buildCalibreDistanceStats(entries) {
-  // ── Calibre chart ──
-  var calCard = document.getElementById('calibre-card');
-  var calChart = document.getElementById('calibre-chart');
-  var calEntries = entries.filter(function(e){ return e.calibre; });
-
-  if (calEntries.length === 0) {
-    calCard.style.display = 'none';
-  } else {
-    calCard.style.display = 'block';
-    // Count by calibre
-    var calCount = {}, calDist = {};
-    calEntries.forEach(function(e) {
-      var c = e.calibre.trim();
-      calCount[c] = (calCount[c]||0) + 1;
-      if (e.distance_m) {
-        if (!calDist[c]) calDist[c] = [];
-        calDist[c].push(e.distance_m);
-      }
-    });
-    var sorted = Object.keys(calCount).sort(function(a,b){ return calCount[b]-calCount[a]; });
-    var maxCnt = calCount[sorted[0]] || 1;
-
-    var html = '';
-    sorted.slice(0,6).forEach(function(cal, i) {
-      var cnt = calCount[cal];
-      var pct = Math.round(cnt/maxCnt*100);
-      var avgDist = calDist[cal] && calDist[cal].length
-        ? Math.round(calDist[cal].reduce(function(s,v){return s+v;},0)/calDist[cal].length)
-        : null;
-      html += '<div class="cal-row">'
-        + '<div class="cal-name">' + esc(cal) + '</div>'
-        + '<div class="cal-bar-wrap"><div class="cal-bar" style="width:'+pct+'%;background:'+CAL_COLORS[i%CAL_COLORS.length]+';"></div></div>'
-        + '<div class="cal-cnt">' + cnt + '</div>'
-        + '<div class="cal-avg-lbl">' + (avgDist ? avgDist+'m' : '–') + '</div>'
-        + '</div>';
-    });
-    calChart.innerHTML = html;
-  }
-
-  // ── Distance chart ──
-  var distCard = document.getElementById('distance-card');
-  var distChart = document.getElementById('distance-chart');
-  var distEntries = entries.filter(function(e){ return e.distance_m && e.distance_m > 0; });
-
-  if (distEntries.length === 0) {
-    distCard.style.display = 'none';
-  } else {
-    distCard.style.display = 'block';
-
-    // Overall average
-    var totalDist = distEntries.reduce(function(s,e){ return s+e.distance_m; }, 0);
-    var avgDist = Math.round(totalDist / distEntries.length);
-
-    // Per species averages
-    var spDist = {};
-    distEntries.forEach(function(e) {
-      if (!spDist[e.species]) spDist[e.species] = [];
-      spDist[e.species].push(e.distance_m);
-    });
-    var spAvgs = Object.keys(spDist).map(function(sp) {
-      var vals = spDist[sp];
-      return { sp:sp, avg: Math.round(vals.reduce(function(s,v){return s+v;},0)/vals.length) };
-    }).sort(function(a,b){ return b.avg - a.avg; });
-    var maxAvg = spAvgs.length ? spAvgs[0].avg : 1;
-
-    // Range bands
-    var bands = [
-      { label:'0 – 50m',    min:0,   max:50,  color:'var(--moss)' },
-      { label:'51 – 100m',  min:51,  max:100, color:'var(--gold)' },
-      { label:'101 – 150m', min:101, max:150, color:'#f57f17' },
-      { label:'150m+',      min:151, max:9999,color:'#c62828' },
-    ];
-    var bandCounts = bands.map(function(b) {
-      return distEntries.filter(function(e){ return e.distance_m>=b.min && e.distance_m<=b.max; }).length;
-    });
-    var totalBand = distEntries.length;
-
-    var html = '<div class="dist-avg-box">'
-      + '<div><div class="dist-avg-val">' + avgDist + '</div><div class="dist-avg-unit">metres avg</div></div>'
-      + '<div><div class="dist-avg-lbl">Overall average</div>'
-      + '<div class="dist-avg-sub">Based on ' + distEntries.length + ' entr' + (distEntries.length===1?'y':'ies') + ' with<br>distance recorded</div></div>'
-      + '</div>';
-
-    if (spAvgs.length > 1) {
-      html += '<div class="scard-sub-t">By species</div>';
-      spAvgs.forEach(function(s) {
-        var clr = SP_COLORS_D[s.sp] || '#5a7a30';
-        var pct = Math.round(s.avg/maxAvg*100);
-        html += '<div class="dist-sp-row">'
-          + '<div class="dist-sp-dot" style="background:'+clr+';"></div>'
-          + '<div class="dist-sp-name">'+s.sp+'</div>'
-          + '<div class="dist-bar-wrap"><div class="dist-bar" style="width:'+pct+'%;background:'+clr+';"></div></div>'
-          + '<div class="dist-val">'+s.avg+'m</div>'
-          + '</div>';
-      });
-    }
-
-    html += '<div class="scard-sub-t" style="margin-top:14px;">Distance bands</div>'
-      + '<div class="range-grid">';
-    bands.forEach(function(b, i) {
-      var cnt = bandCounts[i];
-      var pct = totalBand ? Math.round(cnt/totalBand*100) : 0;
-      html += '<div class="range-cell">'
-        + '<div class="range-band">'+b.label+'</div>'
-        + '<div class="range-cnt">'+cnt+'</div>'
-        + '<div class="range-pct">'+pct+'% of culls</div>'
-        + '<div class="range-bar"><div class="range-bar-fill" style="width:'+pct+'%;background:'+b.color+';"></div></div>'
-        + '</div>';
-    });
-    html += '</div>';
-
-    distChart.innerHTML = html;
-  }
-}
+// ── Calibre & Distance Stats / Age Class Breakdown →
+//    moved to modules/stats.mjs (Commit N). CAL_COLORS / SP_COLORS_D /
+//    AGE_CLASSES / AGE_COLORS / AGE_GROUPS moved earlier (Commit H).
+//    buildCalibreDistanceStats(entries), buildAgeStats(entries),
+//    normalizeAgeClassLabel(label) now imported from the stats module.
 
 
-// ── Age Class Breakdown ───────────────────────────────────────
-// AGE_CLASSES, AGE_COLORS, AGE_GROUPS moved to modules/stats.mjs (Commit H).
 
-function buildAgeStats(entries) {
-  var card  = document.getElementById('age-card');
-  var chart = document.getElementById('age-chart');
-  var aged  = entries.filter(function(e){ return e.age_class; });
-
-  if (aged.length === 0) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-
-  // Overall counts
-  var counts = {};
-  AGE_CLASSES.forEach(function(a){ counts[a] = 0; });
-  aged.forEach(function(e){
-    var ageKey = normalizeAgeClassLabel(e.age_class);
-    if (counts[ageKey] !== undefined) counts[ageKey]++;
-  });
-  var total = aged.length;
-  var maxCnt = Math.max.apply(null, AGE_CLASSES.map(function(a){ return counts[a]; }).concat([1]));
-
-  // Overall bars
-  var html = '';
-  AGE_CLASSES.forEach(function(ac, i) {
-    var cnt = counts[ac];
-    var pct = total ? Math.round(cnt/total*100) : 0;
-    var barPct = Math.round(cnt/maxCnt*100);
-    html += '<div class="age-row">'
-      + '<div class="age-lbl">' + ac + '</div>'
-      + '<div class="age-bar-wrap"><div class="age-bar" style="width:'+barPct+'%;background:'+AGE_COLORS[i]+';"></div></div>'
-      + '<div class="age-cnt">' + cnt + '</div>'
-      + '<div class="age-pct">' + (cnt ? pct+'%' : '–') + '</div>'
-      + '</div>';
-  });
-
-  // Summary pills
-  var notRecorded = entries.length - aged.length;
-  html += '<div class="age-summary">';
-  Object.keys(AGE_GROUPS).forEach(function(grp) {
-    var grpCnt = AGE_GROUPS[grp].reduce(function(s,a){ return s+(counts[a]||0); }, 0);
-    var grpPct = total ? Math.round(grpCnt/total*100) : 0;
-    var dotClr = grp==='Juvenile' ? '#7adf7a' : grp==='Adult' ? '#c8a84b' : '#f57f17';
-    html += '<div class="age-pill">'
-      + '<div class="age-pill-dot" style="background:'+dotClr+';"></div>'
-      + '<div class="age-pill-txt">'+grp+'</div>'
-      + '<div class="age-pill-cnt">'+grpCnt+' · '+grpPct+'%</div>'
-      + '</div>';
-  });
-  if (notRecorded > 0) {
-    html += '<div class="age-pill">'
-      + '<div class="age-pill-dot" style="background:#ccc;"></div>'
-      + '<div class="age-pill-txt">Not recorded</div>'
-      + '<div class="age-pill-cnt">'+notRecorded+'</div>'
-      + '</div>';
-  }
-  html += '</div>';
-
-  // Per-species breakdown
-  var spSeen = {};
-  aged.forEach(function(e){ spSeen[e.species] = true; });
-  var species = Object.keys(spSeen);
-
-  if (species.length > 1) {
-    html += '<div class="scard-sub-t" style="margin-top:14px;">By species</div>';
-    species.forEach(function(sp) {
-      var spEntries = aged.filter(function(e){ return e.species === sp; });
-      var spCounts = {};
-      AGE_CLASSES.forEach(function(a){ spCounts[a] = 0; });
-      spEntries.forEach(function(e){
-        var ageKey = normalizeAgeClassLabel(e.age_class);
-        if (spCounts[ageKey] !== undefined) spCounts[ageKey]++;
-      });
-      var spMax = Math.max.apply(null, AGE_CLASSES.map(function(a){ return spCounts[a]; }).concat([1]));
-      var clr = SP_COLORS_D[sp] || '#5a7a30';
-
-      html += '<div class="age-sp-section">';
-      html += '<div class="age-sp-hdr"><div class="age-sp-dot" style="background:'+clr+';"></div><div class="age-sp-nm">'+sp+'</div></div>';
-      AGE_CLASSES.forEach(function(ac, i) {
-        var cnt = spCounts[ac];
-        if (!cnt) return;
-        var barPct = Math.round(cnt/spMax*100);
-        html += '<div class="age-mini-row">'
-          + '<div class="age-mini-lbl">'+ac+'</div>'
-          + '<div class="age-mini-bw"><div class="age-mini-bf" style="width:'+barPct+'%;background:'+AGE_COLORS[i]+';"></div></div>'
-          + '<div class="age-mini-cnt">'+cnt+'</div>'
-          + '</div>';
-      });
-      html += '</div>';
-    });
-  }
-
-  chart.innerHTML = html;
-}
 
 
 // ══════════════════════════════════════════════════════════════
@@ -6245,48 +6045,6 @@ window.addEventListener('offline', function() {
 
 
 
-function buildTrendsChart(entries) {
-  var card  = document.getElementById('trends-card');
-  var chart = document.getElementById('trends-chart');
-  if (!card || !chart) return;
-
-  if (currentSeason !== '__all__') { card.style.display = 'none'; return; }
-
-  var bySeason = {};
-  entries.forEach(function(e) {
-    var s = buildSeasonFromEntry(e.date);
-    if (!bySeason[s]) bySeason[s] = { count: 0, totalWt: 0, wtN: 0, species: {} };
-    bySeason[s].count++;
-    if (e.weight_kg) { bySeason[s].totalWt += parseFloat(e.weight_kg); bySeason[s].wtN++; }
-    bySeason[s].species[e.species] = true;
-  });
-
-  var keys = Object.keys(bySeason).sort();
-  if (keys.length < 2) { card.style.display = 'none'; return; }
-  // Show last 5 seasons max
-  if (keys.length > 5) keys = keys.slice(keys.length - 5);
-
-  card.style.display = 'block';
-
-  var maxCount = Math.max.apply(null, keys.map(function(k){ return bySeason[k].count; }));
-
-  var html = '<div style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Total cull per season</div>';
-  keys.forEach(function(k) {
-    var d = bySeason[k];
-    var pct = Math.round(d.count / maxCount * 100);
-    var avgWt = d.wtN > 0 ? (d.totalWt / d.wtN).toFixed(1) : '–';
-    html += '<div class="bar-row">'
-      + '<div class="bar-lbl">' + seasonLabel(k) + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:linear-gradient(90deg,#5a7a30,#7adf7a);"></div></div>'
-      + '<div class="bar-cnt">' + d.count + '</div>'
-      + '</div>';
-    html += '<div style="font-size:9px;color:rgba(0,0,0,0.35);margin:-2px 0 6px 0;padding-left:2px;">'
-      + 'Avg weight: ' + avgWt + ' kg · ' + Object.keys(d.species).length + ' species'
-      + '</div>';
-  });
-
-  chart.innerHTML = html;
-}
 
 
 // ══════════════════════════════════════════════════════════════
@@ -7928,56 +7686,9 @@ async function tryRedeemSyndicateInviteFromUrl() {
 }
 
 
-// ── Ground Stats ───────────────────────────────────────────────
-function buildGroundStats(entries) {
-  var card  = document.getElementById('ground-card');
-  var chart = document.getElementById('ground-chart');
-  if (!card || !chart) return;
-
-  // Group by ground — blank ground = 'Untagged'
-  var counts = {};
-  entries.forEach(function(e) {
-    var g = (e.ground && e.ground.trim()) ? e.ground.trim() : null;
-    if (g) counts[g] = (counts[g]||0) + 1;
-    else   counts['__untagged__'] = (counts['__untagged__']||0) + 1;
-  });
-
-  var grounds = Object.keys(counts).filter(function(g){ return g !== '__untagged__'; });
-
-  // Hide if only one ground or no grounds at all
-  if (grounds.length === 0) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-
-  grounds.sort(function(a,b){ return counts[b]-counts[a]; });
-  var maxCnt = Math.max.apply(null, grounds.map(function(g){ return counts[g]; }).concat([1]));
-
-  var html = '';
-  grounds.forEach(function(g, i) {
-    var cnt = counts[g];
-    var pct = Math.round(cnt/maxCnt*100);
-    var barClr = i === 0
-      ? 'linear-gradient(90deg,#5a7a30,#7adf7a)'
-      : 'linear-gradient(90deg,#c8a84b,#f0c870)';
-    html += '<div class="bar-row">'
-      + '<div class="bar-lbl">' + esc(g) + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+barClr+';"></div></div>'
-      + '<div class="bar-cnt">'+cnt+'</div>'
-      + '</div>';
-  });
-
-  // Untagged at bottom in grey if any
-  if (counts['__untagged__']) {
-    var uCnt = counts['__untagged__'];
-    var uPct = Math.round(uCnt/maxCnt*100);
-    html += '<div class="bar-row">'
-      + '<div class="bar-lbl" style="color:var(--muted);font-style:italic;">Untagged</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+uPct+'%;background:#e0dcd6;"></div></div>'
-      + '<div class="bar-cnt" style="color:var(--muted);">'+uCnt+'</div>'
-      + '</div>';
-  }
-
-  chart.innerHTML = html;
-}
+// ── Ground Stats / Trends chart → moved to modules/stats.mjs (Commit N).
+//    buildGroundStats(entries), buildTrendsChart(entries, { currentSeason })
+//    now imported from the stats module; call sites unchanged.
 
 
 // ── Ground Management (add / delete from targets sheet) ───────
