@@ -4,6 +4,42 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-18 — Content audit: FAC age, stale AHVLA ref, trained-hunter declaration wording
+
+Follow-up pass on user-facing content after the CSV-injection fix. I audited `privacy.html`, `terms.html`, species profiles / calibre tables in `index.html`, `diary-guide.html`, and the trained-hunter declaration PDFs. Seasons, calibre/energy minima (including the Scotland 2023 80-grain amendment and the Scotland Oct-2023 removal of male-deer close seasons), fallow palmation, roe delayed implantation, CWD tusks, and Mapbox/OS attribution all check out. Three real factual issues found and fixed.
+
+- `questions.js` — Q260 *"What is the minimum age to hold a Firearms Certificate (FAC) in the UK?"* previously had `correctIndex: 2` (18) with the explanation *"You must be 18 or over to hold a Firearm Certificate in your own name"*. That conflates **holding** a certificate with **purchasing** one. Under Firearms Act 1968 s.22(2), a person under 14 cannot possess a Section 1 firearm (outside narrow exceptions), so the practical minimum for **holding** an FAC in Great Britain is **14**. Purchase/hire is restricted to 18+ under s.22(1) (raised from 17 in 2010). Northern Ireland operates a different scheme (minimum 16, SI 2004/702). Stem rewritten to *"In Great Britain, what is the minimum age at which a person can be granted a Firearm Certificate for a Section 1 rifle used for deer stalking?"*, `correctIndex: 0` (14), and the explanation now walks through hold vs. purchase vs. the NI scheme.
+- `modules/pdf.mjs` — per-carcass Trained Hunter Declaration: *"Gralloch inspection (AHVLA trained-hunter checklist):"* updated to *"APHA / FSA trained-hunter checklist"*. **AHVLA** (Animal Health and Veterinary Laboratories Agency) was dissolved on 1 October 2014 and replaced by **APHA** — the PDF had been referencing a defunct agency for ~12 years.
+- `modules/pdf.mjs` — both the per-carcass and per-consignment declaration bodies now explicitly attest to **(a) no abnormal behaviour before the kill** and **(b) no known environmental contamination** at the kill site, plus cite **Regulation (EC) 853/2004, Annex III, Section IV, Chapter II**. The previous wording covered only the gralloch examination — which is one of three elements the regulation's "trained person" declaration is supposed to cover per the FSA Wild Game Guide. Consignment-page break threshold raised from 110pt to 140pt to keep the now-longer declaration + signature block together.
+- `sw.js` — `SW_VERSION` `7.82 → 7.83` so existing installs pull the corrected questions.js and declaration PDFs.
+- `betav2/` rebuilt from source via `node scripts/build-betav2.mjs`.
+
+No Supabase changes.
+
+---
+
+## 2026-04-18 — Security: CSV / formula-injection guard on diary exports
+
+Audit flagged `csvField()` as the only launch-blocker: leading `=`, `+`, `-`, `@`, TAB, or CR in any exported cell can be interpreted as a formula by Excel / Sheets / LibreOffice (an attacker who gets any of their own text into a diary export row — notes, ground name, syndicate member display-name, tag number, etc. — could coerce the victim's spreadsheet into evaluating code on open).
+
+- `lib/fl-pure.mjs` — `csvField()` now prepends a literal `'` inside the quoted cell when the raw value begins with any of `= + - @ \t \r`. RFC-4180 quoting, quote-doubling, and CR/LF-squash behaviour unchanged; apostrophe is hidden by spreadsheets on display and only visible in edit mode (OWASP-recommended mitigation).
+- `diary.js` — shim `csvField()` near line 4274 patched identically (same contract as `lib/fl-pure.mjs#csvField`; the SPEC comment stays pinned to the library version).
+- `tests/fl-pure.test.mjs` — two new cases: (a) leading `=`, `+`, `-`, `@`, TAB, CR all get the `'` guard (with CR-prefixed values still getting their CR squashed after the guard); (b) safe leading chars (letters, digits, space, mid-string `=`, and `"` which stays under RFC-4180 doubling) are unaffected. All **33** tests pass (`node --test tests/fl-pure.test.mjs`).
+- `sw.js` — `SW_VERSION` `7.81 → 7.82` so existing clients pick up the patched diary.js.
+
+No Supabase changes, no schema work.
+
+---
+
+## 2026-04-18 — Hosting: `betav2` static deploy bundle
+
+Folder **`betav2/`** holds a copy of everything needed to upload to static web hosting for beta testing (HTML/CSS/JS, `modules/`, `lib/fl-pure.mjs`, `vendor/leaflet/`, manifests, icons, `questions.js`, `sw.js`). Excludes `tests/`, `scripts/` SQL, `exports/`, previews.
+
+- `betav2/README.md` — upload notes (HTTPS, root vs subpath).
+- `scripts/build-betav2.mjs` — regenerates `betav2/` from the repo; preserves `betav2/README.md` if present. Run: `node scripts/build-betav2.mjs`.
+
+---
+
 ## 2026-04-17 — Deer School: distractors, option shuffle, bank-wide pass
 
 Assessment-design: multiple-choice wrong answers were sometimes far shorter than the correct line (easy to guess by length). **Question stems, correct-option text, `correctIndex`, and explanations** were unchanged except where the **wrong** options were rewritten.

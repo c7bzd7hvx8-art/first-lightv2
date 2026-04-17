@@ -175,6 +175,30 @@ test('csvField squashes CR/LF to a single space so Excel never splits a row', ()
   assert.equal(csvField('line1\rline2'),   '"line1 line2"');
 });
 
+// Formula-injection defence (OWASP): leading =, +, -, @, TAB, CR get a
+// literal single quote prepended inside the quoted cell so spreadsheet
+// apps treat the value as text rather than evaluating it as a formula.
+test('csvField prepends a single quote to formula-trigger leading chars', () => {
+  assert.equal(csvField('=SUM(A1:A2)'),        `"'=SUM(A1:A2)"`);
+  assert.equal(csvField('=1+1'),               `"'=1+1"`);
+  assert.equal(csvField('+1+1'),               `"'+1+1"`);
+  assert.equal(csvField('-2+3'),               `"'-2+3"`);
+  assert.equal(csvField('@SUM(1,2)'),          `"'@SUM(1,2)"`);
+  assert.equal(csvField('\tinjected'),         `"'\tinjected"`);
+  // CR-prefixed values are still squashed after the guard is applied,
+  // so the output is `"' value"` (guard + space where CR used to be).
+  assert.equal(csvField('\rkill'),             `"' kill"`);
+});
+
+test('csvField does not add a guard to safe leading characters', () => {
+  assert.equal(csvField('hello'),    '"hello"');
+  assert.equal(csvField('2025-26'),  '"2025-26"'); // leading digit, safe
+  assert.equal(csvField(' =leading'), '" =leading"'); // leading space
+  assert.equal(csvField('a=b'),      '"a=b"');
+  // Existing RFC-4180 quote doubling still wins when `"` leads.
+  assert.equal(csvField('"lead'),    '"""lead"');
+});
+
 // ── esc ───────────────────────────────────────────────────────────────────
 test('esc escapes the five critical HTML entities', () => {
   assert.equal(esc('<script>'),      '&lt;script&gt;');
