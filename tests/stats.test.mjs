@@ -19,7 +19,10 @@ import {
   aggregateShooterStats,
   aggregateDestinationStats,
   aggregateTimeOfDayStats,
-  categorizeHourToBucket
+  categorizeHourToBucket,
+  buildShooterStats,
+  buildDestinationStats,
+  buildTimeOfDayStats
 } from '../modules/stats.mjs';
 
 // ── Data-table invariants ──────────────────────────────────────────────────
@@ -206,4 +209,142 @@ test('aggregateTimeOfDayStats: maxCount is the top bucket count', () => {
   assert.equal(r.counts[0], 3); // Dawn
   assert.equal(r.counts[2], 1); // Midday
   assert.equal(r.maxCount, 3);
+});
+
+// ── DOM paint wrappers (Commit M) ──────────────────────────────────────────
+// The three build*Stats functions touch `document.getElementById` and assign
+// to `innerHTML`. A tiny DOM stub keeps tests fast and dependency-free; we
+// only need `getElementById(id) → { style, innerHTML }` to exercise every
+// code path. Restored on every test to avoid cross-test pollution.
+function installDomStub(ids) {
+  const els = {};
+  for (const id of ids) {
+    els[id] = { style: { display: '' }, innerHTML: '' };
+  }
+  const prev = globalThis.document;
+  globalThis.document = {
+    getElementById(id) { return els[id] || null; },
+  };
+  const restore = () => { globalThis.document = prev; };
+  restore.els = els;
+  return restore;
+}
+
+// ── buildShooterStats ──────────────────────────────────────────────────────
+test('buildShooterStats hides card when every entry was shot by Self', () => {
+  const restore = installDomStub(['shooter-card', 'shooter-chart']);
+  try {
+    buildShooterStats([{ shooter: 'Self' }, { shooter: 'Self' }]);
+    assert.equal(restore.els['shooter-card'].style.display, 'none');
+    assert.equal(restore.els['shooter-chart'].innerHTML, '');
+  } finally { restore(); }
+});
+
+test('buildShooterStats paints a bar row per distinct shooter with correct count', () => {
+  const restore = installDomStub(['shooter-card', 'shooter-chart']);
+  try {
+    buildShooterStats([
+      { shooter: 'Self' },
+      { shooter: 'Self' },
+      { shooter: 'Alice' },
+    ]);
+    assert.equal(restore.els['shooter-card'].style.display, 'block');
+    const html = restore.els['shooter-chart'].innerHTML;
+    // Two bar-rows (Self + Alice).
+    assert.equal((html.match(/class="bar-row"/g) || []).length, 2);
+    // Counts present.
+    assert.match(html, /<div class="bar-cnt">2<\/div>/);
+    assert.match(html, /<div class="bar-cnt">1<\/div>/);
+    // Alice is non-Self → gold gradient.
+    assert.match(html, /Alice[\s\S]*?#c8a84b/);
+    // Self → green gradient.
+    assert.match(html, /Self[\s\S]*?#5a7a30/);
+  } finally { restore(); }
+});
+
+test('buildShooterStats escapes shooter names into HTML', () => {
+  const restore = installDomStub(['shooter-card', 'shooter-chart']);
+  try {
+    buildShooterStats([
+      { shooter: 'Self' },
+      { shooter: '<script>alert(1)</script>' },
+    ]);
+    const html = restore.els['shooter-chart'].innerHTML;
+    // Raw <script> must be escaped into &lt;script&gt;.
+    assert.equal(html.includes('<script>alert(1)</script>'), false);
+    assert.match(html, /&lt;script&gt;/);
+  } finally { restore(); }
+});
+
+// ── buildDestinationStats ─────────────────────────────────────────────────
+test('buildDestinationStats hides card when no entries carry a destination', () => {
+  const restore = installDomStub(['destination-card', 'destination-chart']);
+  try {
+    buildDestinationStats([{ foo: 'bar' }, { species: 'Roe Deer' }]);
+    assert.equal(restore.els['destination-card'].style.display, 'none');
+  } finally { restore(); }
+});
+
+test('buildDestinationStats paints one row per distinct destination with palette colour', () => {
+  const restore = installDomStub(['destination-card', 'destination-chart']);
+  try {
+    buildDestinationStats([
+      { destination: 'Game dealer' },
+      { destination: 'Game dealer' },
+      { destination: 'Self / personal use' },
+      { destination: 'Condemned' },
+    ]);
+    assert.equal(restore.els['destination-card'].style.display, 'block');
+    const html = restore.els['destination-chart'].innerHTML;
+    assert.equal((html.match(/class="bar-row"/g) || []).length, 3);
+    // Game dealer → gold (#c8a84b) palette entry.
+    assert.match(html, /Game dealer[\s\S]*?#c8a84b/);
+    // Condemned → red (#c62828).
+    assert.match(html, /Condemned[\s\S]*?#c62828/);
+  } finally { restore(); }
+});
+
+test('buildDestinationStats falls back to Self/green for unknown destinations', () => {
+  const restore = installDomStub(['destination-card', 'destination-chart']);
+  try {
+    buildDestinationStats([{ destination: 'Exotic Butcher X' }]);
+    const html = restore.els['destination-chart'].innerHTML;
+    assert.match(html, /Exotic Butcher X[\s\S]*?#5a7a30/);
+  } finally { restore(); }
+});
+
+// ── buildTimeOfDayStats ────────────────────────────────────────────────────
+test('buildTimeOfDayStats early-returns when card or chart element is missing', () => {
+  const restore = installDomStub([]);   // no elements registered
+  try {
+    // Should not throw.
+    buildTimeOfDayStats([{ time: '06:30' }]);
+  } finally { restore(); }
+});
+
+test('buildTimeOfDayStats hides card when zero entries carry a parseable time', () => {
+  const restore = installDomStub(['time-card', 'time-chart']);
+  try {
+    buildTimeOfDayStats([{ foo: 'bar' }, { time: null }]);
+    assert.equal(restore.els['time-card'].style.display, 'none');
+  } finally { restore(); }
+});
+
+test('buildTimeOfDayStats skips zero-count buckets and paints the rest', () => {
+  const restore = installDomStub(['time-card', 'time-chart']);
+  try {
+    buildTimeOfDayStats([
+      { time: '06:00' },   // Dawn
+      { time: '06:30' },   // Dawn
+      { time: '12:00' },   // Midday
+    ]);
+    assert.equal(restore.els['time-card'].style.display, 'block');
+    const html = restore.els['time-chart'].innerHTML;
+    // Exactly 2 rows (Dawn, Midday) — no Morning/Afternoon/Evening/Night.
+    assert.equal((html.match(/class="bar-row"/g) || []).length, 2);
+    // Bucket labels from TIME_OF_DAY_BUCKETS survive untouched (they are
+    // known-safe constants so the function does not re-escape them).
+    assert.match(html, /Dawn/);
+    assert.match(html, /Midday/);
+  } finally { restore(); }
 });

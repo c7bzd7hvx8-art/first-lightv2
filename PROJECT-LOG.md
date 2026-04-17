@@ -4,6 +4,27 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — Phase 2 / Commit M: shooter / destination / time-of-day paint wrappers → `modules/stats.mjs`
+
+First of three stats-side commits in the new `feat/modularise-phase-2-stats` branch. The three smallest DOM paint wrappers from the Stats tab's "More" section are now in the stats module alongside their aggregators (which were extracted back in Commit H). The bodies used to live at ~L6237 in `diary.js`.
+
+### Why these three first
+They were already aggregator-backed — each one called `aggregateShooterStats` / `aggregateDestinationStats` / `aggregateTimeOfDayStats` and did nothing but iterate the result into HTML. Moving them is a mechanical lift with no cross-references to extract: the only diary.js dep was `esc` (already in `lib/fl-pure.mjs`). They establish the pattern for the larger wrappers (`buildAgeStats`, `buildCalibreDistanceStats`, `buildTrendsChart`, `buildGroundStats`) queued for Commit N.
+
+### Changes
+- `modules/stats.mjs` (+107 lines): `buildShooterStats`, `buildDestinationStats`, `buildTimeOfDayStats` exported; now imports `esc` from `lib/fl-pure.mjs`. Header comment updated to reflect the new DOM-paint section (purity guarantee now confined to the data tables + aggregators).
+- `diary.js` (−77 lines): three `function build*Stats(entries)` definitions removed; replaced with a 3-line breadcrumb comment pointing at the module. The three names added to the existing stats.mjs import block. Call sites at L~3865 are unchanged.
+- `tests/stats.test.mjs` (+11 tests, 33 total): tiny in-memory DOM stub (`installDomStub(ids) → { getElementById, els, restore }`) covers the all-Self hide branch, bar-row rendering, HTML escaping of shooter names, destination palette + fallback for unknown destinations, and zero-bucket skipping on the time card.
+- `sw.js`: SW_VERSION 7.63 → 7.64.
+
+### Tests
+167/167 green across the whole suite. `stats.test.mjs` alone: 33 tests (was 22; +11 new). No lint errors.
+
+### Phase-2-stats progress
+1/3 — **Commit M shipped.** Commit N will move the four larger paint wrappers (age / calibre-distance / trends / ground, ~296 lines); Commit O will move the `buildStats` orchestrator (~169 lines). Branch: `feat/modularise-phase-2-stats`.
+
+---
+
 ## 2026-04-16 — Phase 2 / Commit L: Season Summary builders moved into `modules/pdf.mjs`
 
 Final chunk of the Phase-2 PDF modularisation. Both remaining renderers — `exportSeasonSummary` (378 lines, A4 landscape, 13-column entries table) and `exportSyndicateSeasonSummaryPdf` (295 lines, A4 portrait, 4-column entries table) — now live as `buildSeasonSummaryPDF` / `buildSyndicateSeasonSummaryPDF` in `modules/pdf.mjs`. The diary.js wrappers shrank from 673 lines total to ~30 and just forward the globals (`allEntries`, `currentSeason`, `cullTargets`, `PLAN_SPECIES`, `planSpeciesMeta`, `diaryNow()`) plus the `window._summarySeasonLabel` / `window._summaryGroundOverride` UI state the old renderer consulted via closure.

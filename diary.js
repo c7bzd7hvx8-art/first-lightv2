@@ -35,7 +35,13 @@ import {
   AGE_CLASSES, AGE_COLORS, AGE_GROUPS,
   aggregateShooterStats,
   aggregateDestinationStats,
-  aggregateTimeOfDayStats
+  aggregateTimeOfDayStats,
+  // Commit M: DOM paint wrappers for the three aggregator-backed cards in
+  // the Stats "More" section. The bodies used to live at ~L6237 here;
+  // after this import they live exclusively in modules/stats.mjs.
+  buildShooterStats,
+  buildDestinationStats,
+  buildTimeOfDayStats
 } from './modules/stats.mjs';
 import {
   buildSimpleDiaryPDF,
@@ -6233,86 +6239,11 @@ window.addEventListener('offline', function() {
 // Call on sign-in to restore badge state
 
 
-// ── Shooter Stats ─────────────────────────────────────────────
-function buildShooterStats(entries) {
-  var card  = document.getElementById('shooter-card');
-  var chart = document.getElementById('shooter-chart');
-  var agg = aggregateShooterStats(entries);
+// ── Shooter / Destination / Time-of-Day stats → moved to modules/stats.mjs
+//    (Commit M). Call sites unchanged; the three buildXxxStats functions are
+//    imported from the stats module at the top of this file.
 
-  // Hide card if everyone is Self (no point showing it) — the aggregator
-  // raises this flag so the render logic here stays one-liner.
-  if (agg.isAllSelf) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
 
-  var html = '';
-  agg.sortedNames.forEach(function(s) {
-    var cnt = agg.counts[s];
-    var pct = Math.round(cnt / agg.maxCount * 100);
-    var barClr = s === 'Self'
-      ? 'linear-gradient(90deg,#5a7a30,#7adf7a)'
-      : 'linear-gradient(90deg,#c8a84b,#f0c870)';
-    html += '<div class="bar-row">'
-      + '<div class="bar-lbl">' + esc(s) + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+barClr+';"></div></div>'
-      + '<div class="bar-cnt">'+cnt+'</div>'
-      + '</div>';
-  });
-  chart.innerHTML = html;
-}
-
-function buildDestinationStats(entries) {
-  var card  = document.getElementById('destination-card');
-  var chart = document.getElementById('destination-chart');
-  var agg = aggregateDestinationStats(entries);
-
-  if (agg.sortedNames.length === 0) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-
-  var destColors = {
-    'Self / personal use': 'linear-gradient(90deg,#5a7a30,#7adf7a)',
-    'Game dealer':         'linear-gradient(90deg,#c8a84b,#f0c870)',
-    'Friend / family':     'linear-gradient(90deg,#1565c0,#42a5f5)',
-    'Stalking client':     'linear-gradient(90deg,#6a1b9a,#ab47bc)',
-    'Estate / landowner':  'linear-gradient(90deg,#00695c,#4db6ac)',
-    'Left on hill':        'linear-gradient(90deg,#888,#aaa)',
-    'Condemned':           'linear-gradient(90deg,#c62828,#ef5350)'
-  };
-
-  var html = '';
-  agg.sortedNames.forEach(function(d) {
-    var cnt = agg.counts[d];
-    var pct = Math.round(cnt / agg.maxCount * 100);
-    var barClr = destColors[d] || 'linear-gradient(90deg,#5a7a30,#7adf7a)';
-    html += '<div class="bar-row">'
-      + '<div class="bar-lbl">' + esc(d) + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+barClr+';"></div></div>'
-      + '<div class="bar-cnt">'+cnt+'</div>'
-      + '</div>';
-  });
-  chart.innerHTML = html;
-}
-
-function buildTimeOfDayStats(entries) {
-  var card  = document.getElementById('time-card');
-  var chart = document.getElementById('time-chart');
-  if (!card || !chart) return;
-
-  var agg = aggregateTimeOfDayStats(entries);
-  if (agg.total === 0) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-
-  var html = '';
-  for (var j = 0; j < agg.buckets.length; j++) {
-    if (agg.counts[j] === 0) continue;
-    var pct = Math.round(agg.counts[j] / agg.maxCount * 100);
-    html += '<div class="bar-row">'
-      + '<div class="bar-lbl">' + agg.buckets[j].label + '</div>'
-      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+agg.buckets[j].clr+';"></div></div>'
-      + '<div class="bar-cnt">'+agg.counts[j]+'</div>'
-      + '</div>';
-  }
-  chart.innerHTML = html;
-}
 
 function buildTrendsChart(entries) {
   var card  = document.getElementById('trends-card');

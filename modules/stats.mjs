@@ -1,35 +1,42 @@
 // First Light — modules/stats.mjs
 // =============================================================================
-// Stats-tab data tables and pure aggregators, extracted from diary.js during
-// the Phase-1 modularisation. See MODULARISATION-PLAN.md → Commit H.
+// Stats-tab data tables, pure aggregators, and their DOM paint wrappers.
+// Extracted from diary.js across several commits; see MODULARISATION-PLAN.md.
 //
-// Scope of this module (the DOM-free half of the stats feature):
-//   Data tables (pure lookups used by both module + diary.js render code):
+// Scope of this module:
+//   Data tables (pure lookups — Commit H):
 //     • CAL_COLORS       — 6-colour gradient palette for the calibre chart
 //     • SP_COLORS_D      — species → stats-chart colour
 //     • AGE_CLASSES      — ordered age-class label list
 //     • AGE_COLORS       — one colour per AGE_CLASSES index
 //     • AGE_GROUPS       — { 'Juvenile'|'Adult'|'Mature': [labels] }
 //
-//   Pure aggregators (all take the full entries array and return a plain
-//   data structure — no DOM, no globals, trivially unit-testable):
+//   Pure aggregators (no DOM, no globals — Commit H):
 //     • aggregateShooterStats(entries)    → { counts, sortedNames, maxCount, isAllSelf }
 //     • aggregateDestinationStats(entries) → { counts, sortedNames, maxCount }
 //     • aggregateTimeOfDayStats(entries)  → { buckets, counts, total, maxCount }
 //     • categorizeHourToBucket(hour)      → 0..5 bucket index (or 5 for night/NaN)
 //
-// Explicitly *not* in this module (stays in diary.js until a bigger pass):
+//   DOM paint wrappers (write HTML into stats-tab cards — Commit M):
+//     • buildShooterStats(entries)       — renders #shooter-card / #shooter-chart
+//     • buildDestinationStats(entries)   — renders #destination-card / #destination-chart
+//     • buildTimeOfDayStats(entries)     — renders #time-card / #time-chart
+//     Each hides its card when there is no data worth showing (all-Self / empty
+//     destinations / no timed entries).
+//
+// Explicitly *not* in this module (stays in diary.js for now):
 //   • buildCalibreDistanceStats, buildAgeStats, buildTrendsChart,
 //     buildGroundStats — they mix aggregation, HTML, and DOM writes; their
 //     pure halves are worth extracting but are larger and touch more cross-
 //     references (normalizeAgeClassLabel, buildSeasonFromEntry, currentSeason,
-//     Chart.js). Left for a future Phase-2 commit.
-//   • The buildXStats DOM wrappers for shooter/destination/time — they still
-//     live in diary.js as thin callers of the aggregators here + HTML
-//     construction + innerHTML assignment.
+//     Chart.js). Queued for Commit N.
+//   • buildStats orchestrator — Commit O.
 //
-// All functions below are pure — no `window`, no `document`, no `sb`.
+// Data-table + aggregator functions are pure. The DOM paint wrappers touch
+// `document` and are tested with a small in-memory DOM stub.
 // =============================================================================
+
+import { esc } from '../lib/fl-pure.mjs';
 
 // ── Shared palettes / age labels ──────────────────────────────────────────
 
@@ -194,4 +201,106 @@ export function aggregateTimeOfDayStats(entries) {
   var total = counts.reduce(function (a, b) { return a + b; }, 0);
   var maxCount = Math.max.apply(null, counts);
   return { buckets: TIME_OF_DAY_BUCKETS, counts: counts, total: total, maxCount: maxCount };
+}
+
+// ── DOM paint wrappers ────────────────────────────────────────────────────
+// The three functions below each render one card in the Stats tab's "More"
+// section. They follow the same pattern: call the matching aggregator, hide
+// the card entirely when the data is uninteresting (all-Self / empty set),
+// otherwise build an HTML string from bar rows and assign it to the chart
+// element's innerHTML in one write.
+//
+// The cards are styled by `.bar-row` / `.bar-lbl` / `.bar-track` /
+// `.bar-fill` / `.bar-cnt` in `diary.css`; the colour choice for each row
+// is inlined as a `style` attribute because each series uses a different
+// palette (self=green / other=gold for shooter; a colour-coded map for
+// destination; pre-baked colours from the aggregator for time-of-day).
+
+/** Render the Shooter-breakdown card. Hides the card when every entry was
+ *  shot by "Self" (no useful comparison to draw). */
+export function buildShooterStats(entries) {
+  var card  = document.getElementById('shooter-card');
+  var chart = document.getElementById('shooter-chart');
+  var agg = aggregateShooterStats(entries);
+
+  if (agg.isAllSelf) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  var html = '';
+  agg.sortedNames.forEach(function(s) {
+    var cnt = agg.counts[s];
+    var pct = Math.round(cnt / agg.maxCount * 100);
+    var barClr = s === 'Self'
+      ? 'linear-gradient(90deg,#5a7a30,#7adf7a)'
+      : 'linear-gradient(90deg,#c8a84b,#f0c870)';
+    html += '<div class="bar-row">'
+      + '<div class="bar-lbl">' + esc(s) + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+barClr+';"></div></div>'
+      + '<div class="bar-cnt">'+cnt+'</div>'
+      + '</div>';
+  });
+  chart.innerHTML = html;
+}
+
+/** Render the Destination-breakdown card. Hides the card when no entries
+ *  carry a destination value. */
+export function buildDestinationStats(entries) {
+  var card  = document.getElementById('destination-card');
+  var chart = document.getElementById('destination-chart');
+  var agg = aggregateDestinationStats(entries);
+
+  if (agg.sortedNames.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  // Per-destination gradient palette. Matches the semantic colour each
+  // destination carries throughout the app (Self = green, Dealer = gold,
+  // Condemned = red, etc.). Falls back to the Self/green gradient so an
+  // unexpected free-text destination still renders rather than crash.
+  var destColors = {
+    'Self / personal use': 'linear-gradient(90deg,#5a7a30,#7adf7a)',
+    'Game dealer':         'linear-gradient(90deg,#c8a84b,#f0c870)',
+    'Friend / family':     'linear-gradient(90deg,#1565c0,#42a5f5)',
+    'Stalking client':     'linear-gradient(90deg,#6a1b9a,#ab47bc)',
+    'Estate / landowner':  'linear-gradient(90deg,#00695c,#4db6ac)',
+    'Left on hill':        'linear-gradient(90deg,#888,#aaa)',
+    'Condemned':           'linear-gradient(90deg,#c62828,#ef5350)'
+  };
+
+  var html = '';
+  agg.sortedNames.forEach(function(d) {
+    var cnt = agg.counts[d];
+    var pct = Math.round(cnt / agg.maxCount * 100);
+    var barClr = destColors[d] || 'linear-gradient(90deg,#5a7a30,#7adf7a)';
+    html += '<div class="bar-row">'
+      + '<div class="bar-lbl">' + esc(d) + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+barClr+';"></div></div>'
+      + '<div class="bar-cnt">'+cnt+'</div>'
+      + '</div>';
+  });
+  chart.innerHTML = html;
+}
+
+/** Render the Time-of-day card. Hides the card when no entry carries a
+ *  usable time value. Early-returns when either DOM element is missing
+ *  (the card is conditionally present depending on feature flags). */
+export function buildTimeOfDayStats(entries) {
+  var card  = document.getElementById('time-card');
+  var chart = document.getElementById('time-chart');
+  if (!card || !chart) return;
+
+  var agg = aggregateTimeOfDayStats(entries);
+  if (agg.total === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  var html = '';
+  for (var j = 0; j < agg.buckets.length; j++) {
+    if (agg.counts[j] === 0) continue;
+    var pct = Math.round(agg.counts[j] / agg.maxCount * 100);
+    html += '<div class="bar-row">'
+      + '<div class="bar-lbl">' + agg.buckets[j].label + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+agg.buckets[j].clr+';"></div></div>'
+      + '<div class="bar-cnt">'+agg.counts[j]+'</div>'
+      + '</div>';
+  }
+  chart.innerHTML = html;
 }
