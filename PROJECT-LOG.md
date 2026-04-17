@@ -4,6 +4,21 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — `<option>` dark-mode legibility fix (tiny CSS)
+
+Spotted during the Commit I–K smoke-test prep: when the user opened the season selector, the currently-highlighted/selected option rendered near-invisibly (dark grey on dark grey) because Windows Chrome/Edge render the open `<select>` dropdown with OS-shell colours and ignore the `<select>`'s `color` inheritance for the option rows.
+
+- **`diary.css`** — one rule near the top, applies to every `<select>` in the app (season selectors, ground filter, form selects, syndicate export dropdowns, summary season/ground selects):
+  ```
+  option         { background-color:#1a1a1a; color:rgba(255,255,255,0.92); }
+  option:checked { background-color:var(--moss); color:#fff; }
+  ```
+- **`sw.js`** — `SW_VERSION` bumped `7.49` → `7.50` so the CSS propagates.
+
+Not tied to the modularisation branch (pure CSS / SW). Landing on `feat/modularise-phase-2` alongside the PDF work since that's the active branch, but safe to cherry-pick if ever needed.
+
+---
+
 ## 2026-04-16 — Modularisation Phase 2 — Commit K: game dealer + consignment Trained Hunter declarations
 
 Third Phase-2 commit on `feat/modularise-phase-2`. Moves both Reg (EC) 853/2004 Trained Hunter declarations (per-carcass + per-consignment) into `modules/pdf.mjs`, introduces a shared `resolveHunterIdentity` helper, and de-duplicates the consignment PDF's green-filled header row.

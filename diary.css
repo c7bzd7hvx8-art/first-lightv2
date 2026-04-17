@@ -9,6 +9,13 @@ body{background:var(--deep);font-family:'DM Sans',sans-serif;color:var(--bark);m
 .view{display:none;flex-direction:column;min-height:100vh;}
 .view.active{display:flex;}
 button{font-family:'DM Sans',sans-serif;}
+/* Native <option> legibility — the OS shell renders the open dropdown
+   and ignores most of our <select>'s styles. Without this the currently
+   highlighted / selected row on the dark season-pill and syndicate
+   selects came out as near-invisible dark-on-dark on Windows. One rule
+   covers every <select> in the app. */
+option{background-color:#1a1a1a;color:rgba(255,255,255,0.92);}
+option:checked{background-color:var(--moss);color:#fff;}
 
 /* ── Nav ── */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:#111a0b;border-top:1px solid rgba(255,255,255,0.07);display:flex;z-index:200;}
