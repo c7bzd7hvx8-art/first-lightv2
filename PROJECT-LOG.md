@@ -4,6 +4,32 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Terms: allow commercial stalking activity (sale of venison, declarations)
+
+User flagged a meaningful licensing gap after reading the new Terms of Use: *"it says that stalkers cannot use the app for commercial purposes, surely a deer manager will be using the records when making commercial transactions by selling venison to dealers and giving larder books/hunter declarations?"*
+
+They're right. The app is designed around exactly those commercial moments — the trained-hunter declaration, consignment-dealer PDF, and larder book are tools used in the sale of venison, and professional deer managers / paid stalkers are a core user group. The previous "*personal, non-commercial*" framing would have made every one of those uses technically off-side.
+
+### What changed
+
+`terms.html`:
+- **Summary box**: "*You may use it for personal, non-commercial stalking; you may not redistribute it*" → "*You may use it for your own stalking activity — including any lawful commercial side such as selling venison to game dealers or issuing trained-hunter declarations — but you may not resell access to the app itself or redistribute any part of it*".
+- **Section 5 Acceptable use**: the one bullet that said "*lawful purposes related to your own personal or syndicate stalking activity*" now reads "*lawful purposes related to your own stalking activity — recreational, syndicate, or professional*".
+- **Section 8 Licence to use the app**: rewritten from a single sentence into a two-part structure. **What's covered**: recreational stalking, syndicate stalking, professional deer management, paid stalking work, and specifically the commercial activities that follow from stalking (venison sales, issuing trained-hunter / consignment declarations, larder records for food-business purposes — "*the PDFs the app generates are designed for exactly this*"). **What's not covered (without permission)**: reselling access to the app, running a hosted version for third parties, using the app as a paid record-keeping service on behalf of other stalkers, or building a product / competing service on the app's code, design, content, question bank, or PDFs.
+
+`privacy.html` Copyright section: "*You may use the app for personal, non-commercial purposes*" → "*You may use the app for your own stalking activity, including the lawful commercial side of it (selling venison to game dealers, issuing declarations, and so on)*". Kept the IP-rights sentence and the pointer at `terms.html`.
+
+`sw.js`: `SW_VERSION` 7.70 → 7.71 to flush the cached pages for existing installs.
+
+### What didn't change
+
+- The phrase "*personal, non-exclusive, non-transferable, revocable licence*" at the top of Section 8 — that's boilerplate describing the **licence form** (granted to the individual user, not held exclusively, not assignable), not a commercial-use restriction. Standard across every software EULA.
+- The carcass-destination dropdown option "*Self / personal use*" in `diary.html` 415 and its mention in `diary-guide.html` 338 — that's a UI category for where the meat went (e.g. own freezer vs game dealer), not a licensing statement.
+
+Tests still 199/199.
+
+---
+
 ## 2026-04-17 — Remove "beta" language from user-facing copy
 
 User feedback after the Terms of Use commit: "*do not say anything about app being beta, remove references*". All user-visible references to the word *beta* have been stripped:
