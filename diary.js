@@ -40,12 +40,17 @@ import {
 import {
   buildSimpleDiaryPDF,
   buildSingleEntryPDF,
+  buildLarderBookPDF,
+  buildSyndicateListPDF,
+  buildSyndicateLarderBookPDF,
+  syndicateFileSlug as flSyndicateFileSlug,
   userProfileDisplayName as flUserProfileDisplayName
 } from './modules/pdf.mjs';
-// Phase-2 / Commit I: scaffold + two smallest PDF exports land in pdf.mjs.
-// Remaining eight PDFs stay in diary.js for now — they depend on globals
-// (currentUser, allEntries, currentSyndicate) that we'll inject via opts
-// across Commits J → L. See MODULARISATION-PLAN.md.
+// Phase-2 / Commits I–J: scaffold + 5 PDF exports live in pdf.mjs.
+// Remaining 5 PDFs (game dealer, consignment, season summary x2) stay in
+// diary.js for now — they depend on globals (currentUser, allEntries,
+// currentSyndicate) we'll inject via opts in Commits K → L.
+// See MODULARISATION-PLAN.md.
 import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
@@ -4466,9 +4471,11 @@ function exportSeasonSummary() {
 // ── Syndicate manager export (species, sex, date, culled-by only) ──
 var syndicateExportFormat = 'csv';
 
+// Shim over modules/pdf.mjs → syndicateFileSlug(name).
+// Used by non-PDF call sites (syndicate card rendering at L~4760) that
+// aren't on the modularisation path yet.
 function syndicateFileSlug(name) {
-  var s = String(name || 'syndicate').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
-  return s || 'syndicate';
+  return flSyndicateFileSlug(name);
 }
 
 function getSeasonSelectValues() {
@@ -4786,32 +4793,9 @@ function exportSyndicateCSVData(rows, filenameBase) {
 }
 
 function exportSyndicateListPDF(rows, syndicateName, seasonLabelStr, filenameBase) {
-  var doc = new jspdf.jsPDF();
-  doc.setFontSize(16);
-  doc.text('Syndicate culls — ' + syndicateName, 14, 18);
-  doc.setFontSize(10);
-  doc.text(seasonLabelStr + ' · ' + rows.length + ' rows · firstlightdeer.co.uk', 14, 26);
-  var y = 36;
-  rows.forEach(function(r, i) {
-    if (y > 275) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'bold');
-    doc.text((i + 1) + '. ' + (r.species || '—'), 14, y);
-    doc.setFont(undefined, 'normal');
-    doc.text(sexLabel(r.sex, r.species), 100, y);
-    doc.text(fmtDate(r.cull_date) || String(r.cull_date || '—'), 130, y);
-    y += 5;
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Culled by: ' + (r.culledBy || '—'), 14, y);
-    doc.setTextColor(0, 0, 0);
-    y += 8;
-  });
-  doc.save(filenameBase + '.pdf');
-  showToast('✅ PDF downloaded — ' + rows.length + ' rows');
+  // Thin shim over modules/pdf.mjs → buildSyndicateListPDF.
+  var res = buildSyndicateListPDF({ rows: rows, syndicateName: syndicateName, seasonLabelStr: seasonLabelStr, filenameBase: filenameBase });
+  if (res) showToast('✅ PDF downloaded — ' + res.count + ' rows');
 }
 
 function exportSyndicateSeasonSummaryPdf(syndicate, season, entries, summaryRows) {
@@ -5127,90 +5111,17 @@ function userProfileDisplayName() {
 }
 
 function exportLarderBookPDF() {
-  // A larder book records every carcass that entered the larder — including
-  // self-consumption, gifted, etc. It is NOT a dealer-only document (that is the
-  // per-carcass Game dealer PDF). The only legitimate exclusion is "Left on hill":
-  // the carcass was never retrieved, so it never entered the larder.
-  // Destination is kept as a column so the stalker has an audit trail / dealer
-  // reconciliation / recall traceability — but it must not gate what appears.
-  var entries = filteredEntries.filter(function(e) {
-    var d = (e.destination || '').toLowerCase();
-    return d !== 'left on hill';
+  // Thin shim over modules/pdf.mjs → buildLarderBookPDF.
+  // The module handles "Left on hill" filtering, chronological sort (now
+  // non-mutating — was an in-place sort of filteredEntries before), the
+  // stalker-line lookup from currentUser, and the scope line.
+  var res = buildLarderBookPDF({
+    filteredEntries: filteredEntries,
+    user: currentUser,
+    season: currentSeason
   });
-  if (entries.length === 0) {
-    showToast('No larder entries in this season.');
-    return;
-  }
-  entries.sort(function(a,b){ return (a.date||'').localeCompare(b.date||'') || (a.time||'').localeCompare(b.time||''); });
-
-  var doc = new jspdf.jsPDF('landscape');
-  var pageW = doc.internal.pageSize.getWidth();
-
-  var stalkerLine = '';
-  try {
-    stalkerLine = userProfileDisplayName() || (currentUser && currentUser.email) || '';
-  } catch (_) {}
-
-  doc.setFontSize(16); doc.text('Larder Book — First Light Cull Diary', 14, 16);
-  doc.setFontSize(9); doc.setTextColor(120);
-  // Prefer an explicit season label (e.g. "Season 2025/26") over a raw first/last date
-  // so a dealer or auditor immediately sees the scope. Fall back to the date range
-  // when viewing All Seasons (no single season selected).
-  var scopeLine;
-  try {
-    scopeLine = (currentSeason && currentSeason !== '__all__')
-      ? 'Season ' + (typeof seasonLabel === 'function' ? seasonLabel(currentSeason) : currentSeason)
-      : 'All seasons · ' + entries[0].date + ' to ' + entries[entries.length-1].date;
-  } catch (_) {
-    scopeLine = entries[0].date + ' to ' + entries[entries.length-1].date;
-  }
-  doc.text((stalkerLine ? stalkerLine + ' · ' : '') + scopeLine + ' · ' + entries.length + ' carcasses', 14, 23);
-  doc.setTextColor(0);
-
-  var headers = ['#','Date','Tag','Species','Sex','Weight (kg)','Location / Ground','Destination','Abnormalities'];
-  var colX = [14, 22, 52, 78, 110, 133, 155, 210, 248];
-  var y = 32;
-
-  function drawHeader() {
-    doc.setFontSize(8); doc.setFont(undefined,'bold');
-    for (var h = 0; h < headers.length; h++) doc.text(headers[h], colX[h], y);
-    doc.setFont(undefined,'normal'); y += 6;
-    doc.setDrawColor(200); doc.line(14, y - 3, pageW - 14, y - 3);
-  }
-  drawHeader();
-
-  doc.setFontSize(7.5);
-  entries.forEach(function(e, idx) {
-    if (y > doc.internal.pageSize.getHeight() - 20) {
-      doc.addPage(); y = 16; drawHeader(); doc.setFontSize(7.5);
-    }
-    var locText = ((e.location_name || '') + (e.ground ? ' / ' + e.ground : '')).trim().replace(/^\//, '').trim();
-    var row = [
-      String(idx + 1),
-      e.date || '—',
-      e.tag_number || '—',
-      e.species || '—',
-      sexLabel(e.sex, e.species) || '—',
-      hasValue(e.weight_kg) ? String(e.weight_kg) : '—',
-      (locText || '—').slice(0, 40),
-      (e.destination || '—').slice(0, 25),
-      (e.notes || 'None observed').slice(0, 40)
-    ];
-    for (var c = 0; c < row.length; c++) doc.text(row[c], colX[c], y);
-    y += 5.5;
-  });
-
-  y += 10;
-  if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 20; }
-  doc.setFontSize(9);
-  doc.text('Signature: ___________________________', 14, y);
-  doc.text('Date: _______________', 160, y);
-  y += 12;
-  doc.setFontSize(7); doc.setTextColor(150);
-  doc.text('Produced by First Light Cull Diary — firstlightdeer.co.uk', 14, y);
-
-  doc.save('larder-book-' + entries[0].date + '.pdf');
-  showToast('✅ Larder Book PDF downloaded');
+  if (res) showToast('✅ Larder Book PDF downloaded');
+  else    showToast('No larder entries in this season.');
 }
 
 /**
@@ -5228,110 +5139,10 @@ function exportLarderBookPDF() {
  * semantics.
  */
 function exportSyndicateLarderBookPDF(syndicate, season, rows) {
-  if (!rows || !rows.length) {
-    showToast('⚠️ No larder entries for this syndicate & season');
-    return;
-  }
-  var doc = new jspdf.jsPDF('landscape');
-  var pageW = doc.internal.pageSize.getWidth();
-  var pageH = doc.internal.pageSize.getHeight();
-
-  var label = (typeof seasonLabel === 'function') ? seasonLabel(season) : season;
-  var synName = (syndicate && syndicate.name) || 'Syndicate';
-
-  doc.setFontSize(16); doc.text('Team Larder Book — First Light Cull Diary', 14, 16);
-  doc.setFontSize(9); doc.setTextColor(120);
-  doc.text(synName + ' · Season ' + label + ' · ' + rows.length + ' carcasses', 14, 23);
-  doc.setTextColor(0);
-
-  // Column layout — Shooter is the new column vs the single-user export.
-  // Deliberate order: numeric # first, then the identity columns (date, tag,
-  // shooter, species, sex) that a dealer checks first, then the weight and
-  // location bundle, then the inspection / destination. Location is the most
-  // elastic column so it goes last.
-  var headers = ['#', 'Date', 'Time', 'Tag', 'Shooter', 'Species', 'Sex', 'Wt(kg)', 'Age', 'Destination', 'Location / Ground', 'Larder inspection'];
-  var colX   =  [14,   22,    42,     58,    78,        120,       148,   165,      180,    196,            227,                    261];
-  var y = 32;
-
-  function drawHeader() {
-    doc.setFontSize(8); doc.setFont(undefined, 'bold');
-    for (var h = 0; h < headers.length; h++) doc.text(headers[h], colX[h], y);
-    doc.setFont(undefined, 'normal'); y += 6;
-    doc.setDrawColor(200); doc.line(14, y - 3, pageW - 14, y - 3);
-  }
-  drawHeader();
-
-  function abnormCell(r) {
-    // Concise inline summary: structured codes first, then "other". Truncated
-    // so each row stays single-line; the full text is available in the diary.
-    if (Array.isArray(r.abnormalities) && r.abnormalities.length) {
-      if (r.abnormalities.length === 1 && r.abnormalities[0] === 'none') return 'None observed';
-      var codes = r.abnormalities.filter(function(c) { return c !== 'none'; });
-      var shown = codes.slice(0, 2).map(function(c) { return ABNORMALITY_LABEL_BY_CODE[c] || c; }).join(', ');
-      if (codes.length > 2) shown += ' (+' + (codes.length - 2) + ')';
-      if (r.abnormalities_other) shown += '; other: ' + r.abnormalities_other;
-      return shown;
-    }
-    if (r.abnormalities_other) return r.abnormalities_other;
-    return 'Not recorded';
-  }
-
-  doc.setFontSize(7.5);
-  rows.forEach(function(r, idx) {
-    if (y > pageH - 20) {
-      doc.addPage(); y = 16; drawHeader(); doc.setFontSize(7.5);
-    }
-    var locText = ((r.location_name || '') + (r.ground ? ' / ' + r.ground : '')).trim().replace(/^\//, '').trim();
-    var ageShort = (function(a) {
-      if (!a) return '—';
-      var s = String(a).trim();
-      if (/^calf/i.test(s) || /kid|fawn/i.test(s)) return 'Calf';
-      if (/yearling/i.test(s)) return 'Yrl';
-      if (/adult/i.test(s)) return 'Adult';
-      return s.slice(0, 7);
-    })(r.age_class);
-    var row = [
-      String(idx + 1),
-      r.date || '—',
-      r.time || '—',
-      (r.tag_number || '—').slice(0, 12),
-      (r.culledBy || '—').slice(0, 22),
-      (r.species || '—').slice(0, 14),
-      sexLabel(r.sex, r.species) || '—',
-      hasValue(r.weight_kg) ? String(r.weight_kg) : '—',
-      ageShort,
-      (r.destination || '—').slice(0, 18),
-      (locText || '—').slice(0, 22),
-      abnormCell(r).slice(0, 28)
-    ];
-    for (var c = 0; c < row.length; c++) doc.text(row[c], colX[c], y);
-    y += 5.5;
-  });
-
-  // Totals footer — quick sanity row so a dealer/auditor can tick off the
-  // page before signing.
-  y += 6;
-  if (y > pageH - 30) { doc.addPage(); y = 20; }
-  doc.setDrawColor(200); doc.line(14, y - 2, pageW - 14, y - 2);
-  doc.setFontSize(8); doc.setFont(undefined, 'bold');
-  var totalKg = rows.reduce(function(s, r) { return s + (parseFloat(r.weight_kg) || 0); }, 0);
-  doc.text('Total carcasses: ' + rows.length, 14, y);
-  doc.text('Total weight: ' + (Math.round(totalKg * 10) / 10) + ' kg', 100, y);
-  doc.setFont(undefined, 'normal');
-  y += 14;
-
-  // Manager signature — this is a team book so the manager signs it off.
-  if (y > pageH - 20) { doc.addPage(); y = 20; }
-  doc.setFontSize(9);
-  doc.text('Syndicate manager signature: ___________________________', 14, y);
-  doc.text('Date: _______________', 170, y);
-  y += 12;
-  doc.setFontSize(7); doc.setTextColor(150);
-  doc.text('Produced by First Light Cull Diary — firstlightdeer.co.uk', 14, y);
-
-  var slug = syndicateFileSlug(synName);
-  doc.save('team-larder-book-' + slug + '-' + season + '.pdf');
-  showToast('✅ Team Larder Book PDF downloaded · ' + rows.length + ' carcasses');
+  // Thin shim over modules/pdf.mjs → buildSyndicateLarderBookPDF.
+  var res = buildSyndicateLarderBookPDF({ syndicate: syndicate, season: season, rows: rows });
+  if (res) showToast('✅ Team Larder Book PDF downloaded · ' + res.count + ' carcasses');
+  else    showToast('⚠️ No larder entries for this syndicate & season');
 }
 
 function exportGameDealerDeclaration(id) {

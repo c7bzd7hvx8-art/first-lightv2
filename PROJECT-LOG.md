@@ -4,6 +4,40 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — Modularisation Phase 2 — Commit J: larder book + syndicate list/larder PDFs + shared `drawTableHeader`
+
+Second Phase-2 commit on `feat/modularise-phase-2`. Three more PDFs moved into `modules/pdf.mjs`, plus the shared table-header helper.
+
+- **`modules/pdf.mjs`** (+275 lines) — three new builders + two helpers:
+  - `buildLarderBookPDF({ filteredEntries, user, season })` — single-user larder book. Caller passes the already-scoped list; module does the "Left on hill" exclusion, chronological sort, stalker-line resolution (calls `userProfileDisplayName(user)` internally), and season-vs-All-Seasons scope line.
+  - `buildSyndicateListPDF({ rows, syndicateName, seasonLabelStr, filenameBase })` — simple culls list. Fully parameterised already; now returns `{ filename, count }` so the caller can toast consistently.
+  - `buildSyndicateLarderBookPDF({ syndicate, season, rows })` — team larder book. Accepts server-side-filtered rows, uses `syndicateFileSlug` for the filename, totals-footer + manager signature block.
+  - `syndicateFileSlug(name)` — pure name-to-slug helper exported from the module so it's the single source of truth. Was at L4469 of `diary.js`.
+  - `drawTableHeader(doc, { headers, colX, y, pageW, fontSize })` — extracts the two byte-identical inner `drawHeader()` closures that lived inside `exportLarderBookPDF` and `exportSyndicateLarderBookPDF`. Returns the new y cursor.
+  - Imports from `lib/fl-pure.mjs` extended: now also pulls `seasonLabel` and `ABNORMALITY_LABEL_BY_CODE` (was just `sexLabel`, `parseEntryDateParts`, `MONTH_NAMES`).
+  - **Bonus fix**: `buildLarderBookPDF` clones before sorting, so it no longer mutates the caller's array. `exportLarderBookPDF` in `diary.js` was silently in-place-sorting `filteredEntries` — which is the same array backing the entries list UI. Order-sensitive views weren't triggering it in practice, but the bug was real.
+- **`diary.js`** — four functions collapsed to thin shims:
+  - `syndicateFileSlug(name)` → 1-line shim delegating to the module (kept for the one non-PDF caller at L~4760; inline once Phase 3 clears those).
+  - `exportSyndicateListPDF(...)` → 3-line shim.
+  - `exportLarderBookPDF()` → 10-line shim.
+  - `exportSyndicateLarderBookPDF(...)` → 3-line shim.
+  - Added imports from `./modules/pdf.mjs` for the new builders; aliased `syndicateFileSlug as flSyndicateFileSlug`.
+  - **Net: −200 lines in `diary.js`** (git stat: 229 - / 29 +).
+- **`sw.js`** — `SW_VERSION` bumped `7.47` → `7.48` (module file bytes changed). `PRECACHE_URLS` unchanged — `modules/pdf.mjs` was already added in Commit I.
+- **`tests/pdf.test.mjs`** (+14 assertions → 28 total in this file):
+  - `syndicateFileSlug`: alnum runs, hyphen trim, empty / punctuation fallback.
+  - `drawTableHeader`: header text at each colX, font/draw-color calls, y advance, underline position.
+  - `buildLarderBookPDF`: empty/null guard, "Left on hill" exclusion, filename uses earliest retained date, **non-mutation of caller's array** (regression guard for the bonus fix), `__all__` season → date-range scope line.
+  - `buildSyndicateListPDF`: empty rows guard, filename + count.
+  - `buildSyndicateLarderBookPDF`: empty rows guard, filename slugs syndicate name + appends season, fallback to "syndicate" when name missing.
+  - `FakeDoc` stub expanded to cover `setTextColor`, `setDrawColor`, `setLineWidth`, `setFillColor`, `rect`, and `internal.pageSize.{getWidth,getHeight}`.
+
+**Tests: 117/117 green (was 103; +14).** No lint errors.
+
+Pending browser smoke-test before Commit K (game dealer + consignment dealer declarations ~335 lines).
+
+---
+
 ## 2026-04-16 — Modularisation Phase 2 begun — Commit I: `modules/pdf.mjs` scaffold + 2 smallest PDF exports
 
 New branch `feat/modularise-phase-2` off `main@0c2217b` (Phase 1 is safely merged + pushed). Phase-2 plan: migrate the 10 PDF export functions (~1,322 lines) out of `diary.js` across four commits (I → L), using **dependency injection via `opts` objects** so the module stays pure w.r.t. app globals.
