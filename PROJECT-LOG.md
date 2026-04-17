@@ -4,6 +4,42 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Modularisation: stopping here (decision)
+
+Declaring victory on the `diary.js` modularisation work and closing the P3 code-quality item it was tracking. The three highest-leverage modules are shipped, unit-tested, and on `main`:
+
+- **`lib/fl-pure.mjs`** — pure helpers (season maths, CSV quoting, date parsing).
+- **`modules/pdf.mjs`** — all jsPDF renderers + shared design primitives (Commits H–L).
+- **`modules/stats.mjs`** — KPI maths + stats-tab rendering (Commits H, M, N, O).
+- Plus: `modules/photos.mjs`, `modules/weather.mjs`, already previously extracted.
+
+Combined test payoff: ~300 unit tests across these modules now run on every `npm test`, catching regressions in the exact kind of calculation-heavy code (PDF layout maths, age bucketising, distance-band sums, season summary aggregation) where bugs used to surface only as ugly screenshots weeks later.
+
+### What we deliberately are NOT extracting
+
+The remaining Tier 2–3 modules from `MODULARISATION-PLAN.md` (`data.mjs`, `map.mjs`, `list.mjs`, `auth.mjs`, `offline.mjs`, `syndicate.mjs`) would be an aesthetic tidy rather than an engineering win:
+
+- **`data.mjs`** would hit the same ~15-slot dependency-injection problem we dodged in Commit O. The code is mostly "call Supabase, handle errors" — unit tests would mock the client, not validate real behaviour. Manual E2E-style testing (which you already do on every release) catches more than unit tests would here.
+- **`map.mjs`** is Leaflet globals + tile-URL constants + fullscreen DOM choreography. Rare changes, low defect rate, extraction cost > benefit.
+- **`list.mjs`** is DOM-heavy but algorithmically simple. The only parts with real logic (filter / search / sort) are small.
+- **`auth.mjs` / `offline.mjs` / `syndicate.mjs`** are orchestration around Supabase / IndexedDB. Same argument as `data.mjs`.
+
+### If priorities change
+
+`MODULARISATION-PLAN.md` is kept as-is — it's still a good roadmap if the situation changes: a second developer joining, `data.mjs` starting to accumulate real bugs, or the app growing a feature that genuinely needs a cleaner module boundary. The decision to stop is a local-maximum call, not a permanent close.
+
+### Where the modularisation pass finished
+
+- `diary.js`: ~9,300 lines (plan-doc baseline) → **8,000 lines** (−1,300, ~14%).
+- `modules/*.mjs`: 8 modules, **3,611 lines total** (`pdf.mjs` 1,903 · `stats.mjs` 843 · `weather.mjs` 198 · `photos.mjs` 174 · `clock.mjs` 152 · `svg-icons.mjs` 143 · `sw-bridge.mjs` 125 · `supabase.mjs` 73).
+- Tests: the pre-existing fl-pure suite grew alongside the new module tests to **199 total** in `npm test`.
+
+The line-count delta under-sells the refactor's value: the 1,300 lines that left `diary.js` are overwhelmingly the calculation-heavy / hard-to-eyeball ones (PDF layout, stats maths, season-summary aggregation). The 6,700 lines that remain are mostly DOM wiring, event handlers, and orchestration glue — simpler code that reads fine in one file.
+
+No code changed in this entry; it's a decision log. No SW bump.
+
+---
+
 ## 2026-04-17 — Phase 2 / Commit O: Stats-tab body renderer → `modules/stats.mjs`
 
 Third and final stats-side extraction. The pure render half of `buildStats` — top KPIs, weight grid, species+sex chart, sex chart, fan-out to the seven sub-cards, and the seasonal-month chart — now lives in `modules/stats.mjs` as `renderStatsTabBody(entries, opts)`. The orchestration half (map init, season-pill sync, plan-card visibility, targets async chain, season date label, state flag writes) stays in diary.js — it needs live access to ~10 diary-side globals/functions and there's no clean way to move it without importing most of diary.js into the module.
