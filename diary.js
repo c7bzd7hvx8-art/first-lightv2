@@ -38,6 +38,15 @@ import {
   aggregateTimeOfDayStats
 } from './modules/stats.mjs';
 import {
+  buildSimpleDiaryPDF,
+  buildSingleEntryPDF,
+  userProfileDisplayName as flUserProfileDisplayName
+} from './modules/pdf.mjs';
+// Phase-2 / Commit I: scaffold + two smallest PDF exports land in pdf.mjs.
+// Remaining eight PDFs stay in diary.js for now — they depend on globals
+// (currentUser, allEntries, currentSyndicate) that we'll inject via opts
+// across Commits J → L. See MODULARISATION-PLAN.md.
+import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
   SVG_FL_IMAGE_OFF, SVG_FL_PIN, SVG_FL_GPS, SVG_FL_PENCIL,
@@ -4061,42 +4070,15 @@ function exportPDF() {
 }
 
 function exportPDFData(entries, label) {
-  // Simple list export (used for all-seasons or fallback)
-  var doc = new jspdf.jsPDF();
-  doc.setFontSize(18);
-  doc.text('Cull Diary - ' + label, 14, 20);
-  doc.setFontSize(10);
-  doc.text('First Light · firstlightdeer.co.uk · ' + entries.length + ' entries', 14, 28);
-  var y = 38;
-  entries.forEach(function(e, i) {
-    if (y > 270) { doc.addPage(); y = 20; }
-    doc.setFontSize(12);
-    doc.text((i+1) + '. ' + e.species + ' (' + sexLabel(e.sex, e.species) + ') - ' + (fmtDate(e.date) || '—'), 14, y);
-    y += 6;
-    doc.setFontSize(9);
-    var meta = [];
-    if (e.location_name) meta.push('Location: ' + e.location_name);
-    if (e.weight_kg) meta.push('Weight: ' + e.weight_kg + 'kg');
-    if (e.tag_number) meta.push('Tag: ' + e.tag_number);
-    if (e.calibre) meta.push('Calibre: ' + e.calibre);
-    if (e.distance_m) meta.push('Distance: ' + e.distance_m + 'm');
-    if (e.shot_placement) meta.push('Placement: ' + e.shot_placement);
-    if (e.destination) meta.push('Destination: ' + e.destination);
-    if (meta.length) { doc.text(meta.join(' · '), 14, y); y += 5; }
-    if (e.notes) {
-      var noteLines = doc.splitTextToSize('Notes: ' + e.notes, 180);
-      noteLines.forEach(function(line) {
-        if (y > 270) { doc.addPage(); y = 20; }
-        doc.text(line, 14, y); y += 4;
-      });
-      y += 1;
-    }
-    y += 4;
-    doc.line(14, y, 196, y); y += 5;
+  // Thin shim over modules/pdf.mjs → buildSimpleDiaryPDF.
+  // Kept here (rather than wiring the caller directly) so legacy call sites
+  // inside diary.js continue to work during Phase 2.
+  var res = buildSimpleDiaryPDF({
+    entries: entries,
+    label: label,
+    season: currentSeason
   });
-  var filename = label === 'All Seasons' ? 'cull-diary-all-seasons' : 'cull-diary-' + currentSeason;
-  doc.save(filename + '.pdf');
-  showToast('✅ PDF downloaded - ' + entries.length + ' entries');
+  if (res) showToast('✅ PDF downloaded - ' + res.count + ' entries');
 }
 
 // ── Season Summary PDF ────────────────────────────────────────
@@ -5131,35 +5113,17 @@ function exportSyndicateSeasonSummaryPdf(syndicate, season, entries, summaryRows
 function exportSinglePDF(id) {
   var e = allEntries.find(function(x){ return x.id === id; });
   if (!e) return;
-  var doc = new jspdf.jsPDF();
-  doc.setFontSize(16); doc.text('Cull Record — First Light', 14, 20);
-  doc.setFontSize(12); doc.text(e.species + ' (' + sexLabel(e.sex, e.species) + ')', 14, 32);
-  doc.setFontSize(10);
-  var fields = [
-    ['Date', e.date], ['Time', e.time], ['Location', e.location_name],
-    ['Ground', e.ground],
-    ['Age class', e.age_class], ['Carcass weight', hasValue(e.weight_kg) ? e.weight_kg + ' kg' : ''],
-    ['Tag number', e.tag_number || ''],
-    ['Calibre', e.calibre], ['Distance', hasValue(e.distance_m) ? e.distance_m + 'm' : ''],
-    ['Shot placement', e.shot_placement], ['Destination', e.destination], ['Notes', e.notes ? e.notes.slice(0, 300) : null]
-  ];
-  var y = 44;
-  fields.forEach(function(f) {
-    if (!f[1]) return;
-    doc.setFont(undefined,'bold'); doc.text(f[0] + ':', 14, y);
-    doc.setFont(undefined,'normal'); doc.text(String(f[1]), 60, y);
-    y += 7;
-  });
-  doc.save('cull-record-' + e.date + '.pdf');
-  showToast('✅ PDF downloaded');
+  var res = buildSingleEntryPDF({ entry: e });
+  if (res) showToast('✅ PDF downloaded');
 }
 
-/** Profile name for PDFs — not email (email is identity only, not a legal “name”). */
+/** Profile name for PDFs — not email (email is identity only, not a legal "name"). */
+// Zero-arg shim over modules/pdf.mjs → userProfileDisplayName(user).
+// The remaining three call sites (larder book, game dealer, consignment) live
+// inside PDF functions that still sit in diary.js; they'll switch to the
+// module import directly when those functions move in Commits J → L.
 function userProfileDisplayName() {
-  if (!currentUser) return '';
-  var m = currentUser.user_metadata || {};
-  var n = String(m.full_name || m.name || m.display_name || '').trim();
-  return n;
+  return flUserProfileDisplayName(currentUser);
 }
 
 function exportLarderBookPDF() {

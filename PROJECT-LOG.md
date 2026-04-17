@@ -4,6 +4,38 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — Modularisation Phase 2 begun — Commit I: `modules/pdf.mjs` scaffold + 2 smallest PDF exports
+
+New branch `feat/modularise-phase-2` off `main@0c2217b` (Phase 1 is safely merged + pushed). Phase-2 plan: migrate the 10 PDF export functions (~1,322 lines) out of `diary.js` across four commits (I → L), using **dependency injection via `opts` objects** so the module stays pure w.r.t. app globals.
+
+**Commit I — scaffold + two smallest exports:**
+
+- **`modules/pdf.mjs`** (new, 155 lines) — module scaffold with:
+  - `buildSimpleDiaryPDF({ entries, label, season })` — all-entries list PDF (filename convention: `cull-diary-all-seasons.pdf` vs `cull-diary-<season>.pdf`).
+  - `buildSingleEntryPDF({ entry })` — per-carcass one-pager (filename: `cull-record-<date>.pdf`).
+  - `userProfileDisplayName(user)` — legal-name resolver (used by every PDF header). Kept pure; takes user as arg.
+  - Private helpers `fmtEntryDateShort(d)` + `hasValue(v)` duplicated from `diary.js` rather than moving into `lib/fl-pure.mjs` — would have touched every caller. They'll consolidate once `diary.js` slims down further.
+  - `getJsPDF()` guards access to `window.jspdf.jsPDF` so the module can be imported under Node for tests without a browser DOM.
+- **`diary.js`** — 3 functions collapsed to thin shims:
+  - `exportPDFData(entries, label)` → 6-line shim calling `buildSimpleDiaryPDF`, preserves existing toast UX.
+  - `exportSinglePDF(id)` → 4-line shim doing the `allEntries.find` then calling `buildSingleEntryPDF`.
+  - `userProfileDisplayName()` → zero-arg shim over the module's `flUserProfileDisplayName(currentUser)`. Kept because 3 remaining PDF functions (larder, game dealer, consignment) still live in `diary.js` and use the zero-arg form; they'll switch to the module import directly in Commits J–L.
+  - Added imports from `./modules/pdf.mjs`; aliased the module export to `flUserProfileDisplayName` to dodge name collision with the shim.
+  - **Net: −59 lines in `diary.js`** (git stat: 86 - / 27 +).
+- **`sw.js`** — `SW_VERSION` bumped `7.46` → `7.47`; `./modules/pdf.mjs` added to `PRECACHE_URLS`.
+- **`tests/pdf.test.mjs`** (new) — 14 assertions:
+  - `userProfileDisplayName`: null/undefined, fallback chain (full_name → name → display_name), whitespace trim, empty-metadata guards.
+  - `fmtEntryDateShort`: valid ISO rendering, empty/null, unparseable fallback.
+  - `hasValue`: null/undefined/"" missing; 0/false/"x"/[] present.
+  - `buildSimpleDiaryPDF` + `buildSingleEntryPDF`: empty-entries guard, "All Seasons" vs season-code filenames, entry-date encoded into single filename, jspdf-not-loaded error.
+  - Smoke-tested with an in-memory `FakeDoc` stub so tests don't depend on jspdf.
+
+**Tests: 103/103 green (was 89; +14).** No lint errors in touched files.
+
+Pending browser smoke-test before Commit J (larder book + syndicate list/larder PDFs).
+
+---
+
 ## 2026-04-16 — Modularisation Phase 1 begun — Commit A: diary.js → ES module
 
 Working on branch `feat/modularise-phase-1` (main stays pristine). Backup = origin/main on GitHub.
