@@ -4,6 +4,32 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Launch-readiness blocker #3: privacy policy third-party refresh
+
+Third of the six launch blockers from the scorecard. `privacy.html` was last meaningfully updated before the diary grew its current map stack (Mapbox / OS / Esri / OSM tiles) and the time-zone fallback chain (timeapi.io / worldtimeapi.org), so the policy's third-party list was out of sync with the diary CSP (`diary.html` L5). It also had no named data controller, no data-retention statement, and no structured list of UK GDPR rights. All of that is now fixed in one pass; no code changes.
+
+### Changes to `privacy.html`
+
+- **Last-updated** date: *April 2026* → **17 April 2026** (explicit, for this refresh).
+- **Your location** section: removed the single-paragraph "Nominatim only" claim and replaced with the accurate picture — Nominatim + Open-Meteo are the two anonymous external calls for core-app location, and a new paragraph explains that Cull Diary map-pin coordinates are stored with the entry in Supabase and tiles come from the providers listed below.
+- **Third-party services** section: restructured into three bands — *used by all features* (Google Fonts, jsDelivr/cdnjs CDNs), *used by the core app* (Open-Meteo, Nominatim, timeapi.io / worldtimeapi.org), and *used by the Cull Diary only* (Supabase, Mapbox, Ordnance Survey, Esri/ArcGIS, OpenStreetMap tiles). Each entry links out to the provider's own privacy policy and, where relevant, names the hostname (`events.mapbox.com`, `api.os.uk`, `server.arcgisonline.com`, `tile.openstreetmap.org`) so a power-user can match the listing against what they see in DevTools or a CSP report.
+- **Data storage** section: added one sentence on the offline IndexedDB queue (it previously wasn't mentioned despite being a real on-device data store).
+- **New "Data retention" section**: states explicitly that entry / photo / account deletion is immediate and server-side (the existing `deleteAccount()` → `delete_user` RPC flow in `diary.js` 3833–3894), with a caveat about Supabase's own backup-retention window.
+- **"UK GDPR" section renamed to "Your rights under UK GDPR"**: now lists the seven rights as a bullet list — access, rectification, erasure, portability, restrict/object, complain to ICO — with a direct link to `ico.org.uk/make-a-complaint`. Portability line notes that CSV + PDF export exists today and a full-JSON export is planned (scorecard item #8).
+- **Contact section** renamed to **Contact &amp; data controller**: names the data controller (*Sohaib Mengal, operating from the United Kingdom*) and adds `firstlightdeer@gmail.com` as a clickable `mailto:` alongside the existing site link.
+
+Final heading flow: What we collect · Your location · Third-party services · Data storage · Data retention · Your rights under UK GDPR · Children · Changes · Copyright &amp; Ownership · Contact &amp; data controller.
+
+### Other files
+- `sw.js`: `SW_VERSION` 7.67 → 7.68 (needed because `privacy.html` is in the `STATIC_CACHE` pre-cache list at `sw.js` 37 — without a bump, existing installs would keep serving the old wording).
+
+### Launch-readiness progress
+3 / 6 blockers shipped (#1 feedback link, #3 privacy refresh, #4 FAB aria-label). Still open: **#2** Terms of Use page, **#5** beta-gate decision, **#6** lightweight error logger.
+
+Tests still 199/199; no module code touched.
+
+---
+
 ## 2026-04-17 — Launch-readiness blockers #1 + #4: feedback mailto + FAB aria-label
 
 First pass at the launch-readiness blocker list from the scorecard below. Two of the six blockers fit in a single `diary.html` change:
