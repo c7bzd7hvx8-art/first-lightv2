@@ -4,7 +4,96 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
-## 2026-04-17 — Modularisation: stopping here (decision)
+## 2026-04-17 — Launch-readiness scorecard (pre-beta)
+
+Triggered by: "*Would you advise conducting a comprehensive audit…?*" → re-scoped to **launch-readiness review** given the app is not yet public. First users are "*a tight beta group of stalkers*" and the ship date is "*when ready*". This is a decision-log entry, not a code change — no SW bump.
+
+The scorecard covers what's actually in the repo (see file:line evidence below) across five areas: **Code & technical**, **Product & feature completeness**, **Content**, **UX & design**, **Launch ops**. Grades are relative to "*ship to a private beta of ~5–20 stalkers you know*" — not to a public app store launch.
+
+Grade key: **A** fine to ship · **B** fine to ship, worth revisiting post-beta · **C** ship with a known caveat · **D** fix before opening the beta · **F** fix before *anyone* uses it.
+
+### Scorecard (18 items)
+
+#### Code & technical
+| # | Item | Grade | Evidence / note |
+|---|------|:---:|---|
+| 1 | **Test coverage** — unit tests on the hard-to-eyeball maths | **A** | 199/199 green; `lib/fl-pure.mjs` + `modules/{pdf,stats,weather}.mjs` test suites catch the classes of bug that used to surface weeks late in screenshots. |
+| 2 | **Modularisation / code health** | **A** | Closed as of the next section below — `diary.js` at 8,000 LOC with the calculation-heavy ~1,300 lines factored out. |
+| 3 | **Service-worker update flow** | **A** | `sw.js` 164 (`skipWaiting`), 177 (`clients.claim`); Diary shows a "*New version available*" bar via `modules/sw-bridge.mjs` 31–66, 103–119; index.html shows an equivalent toast via `app.js` 3392–3409. Cache is bumped per change. |
+| 4 | **Error reporting / crash visibility** | **F** | Nothing. No Sentry, no `window.onerror` handler, no uncaught-promise logger. In a beta you *will* get "it just didn't work" reports with no reproduction path. |
+| 5 | **Client-side abuse / rate-limit posture** | **C** | CSP on `diary.html` L5 + `index.html` L5 is tight (no inline scripts, locked connect-src). Nominatim uses an `AbortController` timeout (`diary.js` 3246–3251). No client throttling on auth or entry save — low risk in a tight beta, worth revisiting pre-public. **`privacy.html` and `deerschool.html` have no CSP meta** — minor; they're public-read static pages, but adding a matching CSP is cheap. |
+
+#### Product & feature completeness
+| # | Item | Grade | Evidence / note |
+|---|------|:---:|---|
+| 6 | **Core stalker workflow** — entry → list → stats → PDFs → larder | **A** | Full entry form (`diary.html` 170–452), Stats + Map + Plan (472–606), CSV / PDF / season-summary / larder-book / trained-hunter / consignment-dealer exports (632–643 + `modules/pdf.mjs`). This is the product; it's strong. |
+| 7 | **Syndicate / team features** | **A** | Invites, manager exports (team CSV, team PDF, team summary, team larder), RPCs all shipped and drift-clear (`SUPABASE-RECORD.md` 45–49). |
+| 8 | **Data portability** — backup / export / import | **C** | CSV export works (`diary.js` `exportCSVData` ~4098). **No full-JSON backup**, **no CSV import**. For a beta where users might clear data or switch accounts, a "*Download all my data (JSON)*" button is a 30-min add and worth it. |
+| 9 | **Beta gate / invite system** | **D** | Sign-up is open email + password (`diary.html` 36–52). No invite code, allow-list, or "*closed beta, email us for access*" screen. If the intent is "*tight beta group*" you want **one** of: (a) a known-emails allow-list, (b) a shared invite code, or (c) just don't link the diary URL from the public site until ready. Currently the diary link on `index.html` is live (2738–2745). |
+
+#### Content
+| # | Item | Grade | Evidence / note |
+|---|------|:---:|---|
+| 10 | **Marketing home (`index.html`)** | **B** | Rich: hero, species, legal times, calendar, field guide, org cards (BDS/BASC), install cards, changelog modal, first-launch legal modal. **Missing**: FAQ, screenshots in `manifest.json` (empty — `manifest.json` 18), stalker-facing testimonial/"who it's for" copy. OK for beta; worth filling before public. |
+| 11 | **User guide (`diary-guide.html`)** | **A** | ~13 numbered sections covering account, views, entry form, quick entry, editing, seasons/grounds, targets/plan, stats, map, exports, offline, privacy, syndicates (headings 183–564). Genuinely comprehensive. Only miss: no mention of Mapbox/OS tiles in the privacy sub-step, but that's really a `privacy.html` issue. |
+| 12 | **Privacy policy (`privacy.html`)** | **C** | Names Open-Meteo, Nominatim, Google Fonts, Supabase (233–251). **Does not name**: Mapbox, Ordnance Survey (`api.os.uk`), Esri/ArcGIS (`server.arcgisonline.com`), timeapi.io / worldtimeapi.org — all present in the diary CSP (`diary.html` L5). Also missing: named **data controller** / contact address (currently just "*reach out via support link*", 287–290), structured **data-subject rights** (access, erasure, portability, ICO complaint), explicit **retention period** for account data. For a UK private beta this is borderline fine; for public launch it needs tightening. |
+| 13 | **Terms of Use / EULA** | **F** | **Absent.** No `terms.html`, no disclaimer page, no "by signing up you agree to…" link. For a beta app that produces legally-adjacent documents (trained-hunter declaration, consignment-dealer PDF, larder book) you want a short page covering: personal-use licence, no-warranty / beta notice, user is responsible for the accuracy of their records, you can revoke accounts, UK law. 1–2 hours of copy. |
+
+#### UX & design
+| # | Item | Grade | Evidence / note |
+|---|------|:---:|---|
+| 14 | **First-run / empty state** | **B** | Illustrated empty state + copy + guide link (`diary.html` 132–152). No in-app tour, no "*create your first entry*" coach-mark, no sample data. Fine for beta stalkers (they're motivated); worth a 15-minute dismissible callout before wider launch. |
+| 15 | **Accessibility** | **B** | Most icon buttons have `aria-label` (`diary.html` 102–117, 481, 514); reduced-motion respected in skeleton CSS (`diary.css` 323–325). **Notable gap**: the primary **`+` FAB** at `diary.html` 155 has no `aria-label` (`<button class="fab" …>+</button>`) — one-line fix. The sort button (121) relies on `title=` only. |
+| 16 | **Loading / error states** | **A** | List skeleton + stats loading overlay (`diary.css` 791–815 wired in `diary.js` 1429–1475), offline banner (`diary.html` 124–131), per-action toasts. Good for a PWA that expects patchy signal. |
+| 17 | **PWA install UX** | **A** | Main site has full iOS Safari + Android Chrome install instructions (`index.html` 2661–2717). Both manifests have 152/180/192/512 icons (192/512 maskable). Only nit: `manifest.json.screenshots: []` and no `apple-touch-startup-image` splash. |
+
+#### Launch ops
+| # | Item | Grade | Evidence / note |
+|---|------|:---:|---|
+| 18 | **In-app feedback channel** | **F** | Nothing in the diary footer (`diary.html` 677–682) or anywhere else. Support paths are "Buy me a coffee" and `firstlightdeer.co.uk` on the marketing site. **For a private beta this is the single most important miss** — without it testers either email random addresses or don't report at all. A `mailto:` link labelled "*Report a bug / send feedback*" in the diary footer is a ~5-minute fix. |
+| 19 | **Analytics / cookie posture** | **A** | Honestly none, and the privacy policy (`privacy.html` 206–208) accurately states that. No cookie banner is needed because nothing non-essential is set. This is a feature, not a gap — keep it. |
+| 20 | **Supabase RLS / security snapshot freshness** | **A** | `supabase-audit-rls-snapshot.json._meta.captured` = **2026-04-12**, well under the 75-day weekly-CI staleness window. `SUPABASE-RECORD.md` 77–79 shows all **Pending** items closed. No service-role keys in client code (`modules/supabase.mjs` 36–37 uses the anon key, as intended). |
+
+### Launch-blocker list (do before opening the beta URL to anyone)
+
+In priority order, with rough effort:
+
+1. **In-app feedback link** (item 18). `mailto:firstlight@…?subject=Cull+Diary+beta+feedback` on the auth footer and the diary footer. ~10 minutes. Single most important item on this list.
+2. **Minimal Terms of Use** page (item 13). `terms.html` with: personal-use licence, no-warranty / beta disclaimer, user is responsible for record accuracy, you can revoke accounts, UK law + contact. Link from the auth-screen consent text ("*I agree to the Privacy Policy and Terms*") and from `diary.html` 677–682. ~1–2 hours.
+3. **Privacy policy third-party refresh** (item 12). Add Mapbox, Ordnance Survey, Esri/ArcGIS, timeapi.io/worldtimeapi.org sections; add a retention / "*data deleted immediately on account deletion*" line (the delete flow already does this — `diary.js` 3833–3894). ~30 minutes of copy.
+4. **`+` FAB aria-label** (item 15). `aria-label="New entry"` on `diary.html` 155. Literal 1-line fix.
+5. **Beta gate decision** (item 9). Either (a) keep the diary link but accept anyone who signs up, and just trust that nobody will find it yet (fine if the URL isn't promoted), or (b) add a server-side allow-list via an RLS policy on `cull_entries` / `auth.users` metadata. Recommend **(a)** — simplest; revisit if the URL gets traction. Document the decision either way.
+6. **Lightweight error logger** (item 4). Cheapest path: `window.addEventListener('error', e => …)` + `addEventListener('unhandledrejection', …)` that POSTs `{message, stack, url, userId, appVersion}` to a new `app_errors` Supabase table with an insert-only RLS policy. ~1–2 hours. Makes beta feedback 10× more actionable.
+
+Total effort for blockers 1–6: **~1 half-day of work.**
+
+### Launch polish (worth before wider / public launch, not before beta)
+
+- **JSON export** of a user's full diary (item 8) — "Download my data" page for GDPR portability and user peace-of-mind.
+- **CSV import** / "paste rows to add" (item 8) — so a stalker with an existing spreadsheet can migrate in.
+- Marketing homepage (item 10): add FAQ, a screenshots row, populate `manifest.json.screenshots` for the Android install prompt, add short "*Who this is for*" block.
+- First-run coach-mark / sample entry (item 14).
+- Accessibility sweep: add `aria-label` to every icon-only button (not just the FAB); verify tap targets ≥44px; check focus-visible rings.
+- Tighter privacy policy: named data controller + address, explicit data-subject rights, explicit retention periods, ICO complaint pathway (item 12).
+- Add CSP meta to `privacy.html` and `deerschool.html` (item 5).
+- Syndicate invite-only **registration** gate if you want a harder closed beta (item 9, option (b)).
+
+### Explicitly *not* doing now
+
+- **Analytics / telemetry.** Aligns with the privacy pitch; keep it off.
+- **Cookie banner.** Not needed — nothing non-essential is set. Privacy policy already states this.
+- **Paid tier / billing.** Out of scope; the ask is free for stalkers.
+- **Further modularisation of `diary.js`.** Decided separately below.
+- **Admin / reports dashboard** for the developer side.
+- **Push notifications.** Not a stalker-workflow need; PWAs on iOS are only just gaining solid support anyway.
+
+### First recommended step
+
+Item **18** (`mailto:` feedback link) — it's the highest-value, lowest-effort change on the board and it makes every subsequent beta report actionable. Pair it with item **15** (FAB aria-label) in the same small commit since they're both `diary.html` one-liners.
+
+---
+
+
 
 Declaring victory on the `diary.js` modularisation work and closing the P3 code-quality item it was tracking. The three highest-leverage modules are shipped, unit-tested, and on `main`:
 
