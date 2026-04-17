@@ -17,6 +17,10 @@ import {
   initSupabase as flSupabaseInit
 } from './modules/supabase.mjs';
 import { installErrorLogger } from './modules/error-logger.mjs';
+import {
+  validateDisplayName,
+  validatePasswordChange,
+} from './modules/profile.mjs';
 
 // Tag that the client-side error logger writes into
 // public.app_errors.app_version. Bumped in lock-step with SW_VERSION in
@@ -24,7 +28,7 @@ import { installErrorLogger } from './modules/error-logger.mjs';
 // after a deploy can be filtered down to the new build. Hand-maintained
 // (two strings, but cheap to update; see PROJECT-LOG on the error-logger
 // rollout).
-const FL_APP_VERSION = '7.73';
+const FL_APP_VERSION = '7.74';
 import {
   wxCodeLabel,
   windDirLabel,
@@ -829,6 +833,16 @@ function initDiaryFlUi() {
         break;
       case 'cancel-password-recovery':
         void cancelPasswordRecovery();
+        break;
+      case 'open-name-edit': openNameEditModal(); break;
+      case 'close-name-edit': closeNameEditModal(); break;
+      case 'save-name-edit':
+        void saveNameEdit();
+        break;
+      case 'open-password-change': openPasswordChangeModal(); break;
+      case 'close-password-change': closePasswordChangeModal(); break;
+      case 'save-password-change':
+        void savePasswordChange();
         break;
       case 'filter-entries': filterEntries(el.getAttribute('data-species'), el); break;
       case 'filter-ground': currentGroundFilter = el.value; renderList(); break;
@@ -1635,6 +1649,167 @@ async function cancelPasswordRecovery() {
   if (window.location.hash) history.replaceState(null, '', window.location.pathname);
 }
 
+// ════════════════════════════════════
+// PROFILE EDIT — display name + password
+// ════════════════════════════════════
+// Two small flows added to the Settings tab profile card. Validation lives
+// in modules/profile.mjs; the imperative Supabase glue (updateUser +
+// syndicate_members rewrite for name, re-auth + updateUser for password) is
+// intentionally kept here because it reaches into DOM + currentUser.
+
+function openNameEditModal() {
+  if (!currentUser) return;
+  var modal = document.getElementById('name-edit-modal');
+  var input = document.getElementById('name-edit-input');
+  var err   = document.getElementById('name-edit-err');
+  if (!modal || !input) return;
+  // Prefill with the current display name so the user edits rather than
+  // retypes. Falls back to the email local-part if there's no metadata yet
+  // (matches onSignedIn behaviour so the input shows what the UI shows).
+  var meta = currentUser.user_metadata || {};
+  input.value = (meta.full_name || (currentUser.email || '').split('@')[0] || '').trim();
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
+  modal.style.display = 'flex';
+  setTimeout(function(){ try { input.focus(); input.select(); } catch(_) {} }, 30);
+}
+
+function closeNameEditModal() {
+  var modal = document.getElementById('name-edit-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveNameEdit() {
+  if (!sb || !currentUser) return;
+  var input = document.getElementById('name-edit-input');
+  var err   = document.getElementById('name-edit-err');
+  var btn   = document.getElementById('name-edit-btn');
+  if (!input) return;
+  var v = validateDisplayName(input.value);
+  if (!v.ok) {
+    if (err) { err.textContent = v.error; err.style.display = 'block'; }
+    flHapticError();
+    return;
+  }
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  try {
+    // 1. Update auth.users.user_metadata.full_name. Supabase returns the
+    //    updated user row; trust that over our in-memory copy.
+    var upd = await sb.auth.updateUser({ data: { full_name: v.value } });
+    if (upd.error) throw upd.error;
+    if (upd.data && upd.data.user) currentUser = upd.data.user;
+
+    // 2. Rewrite syndicate_members.display_name across every membership row
+    //    for this user. Unlike ensureMySyndicateDisplayNames() (null-only
+    //    backfill), this is an intentional rename so we drop the .is(null)
+    //    filter. Best-effort — if the column doesn't exist in some older
+    //    deployment we swallow and toast success anyway, because the
+    //    primary identity write (step 1) has landed.
+    try {
+      await sb.from('syndicate_members')
+        .update({ display_name: v.value })
+        .eq('user_id', currentUser.id);
+    } catch (_syndErr) { /* column missing / network — non-fatal */ }
+
+    // 3. Repaint the pieces of UI that bake the name in.
+    var nm  = document.getElementById('account-name');
+    var av  = document.getElementById('account-av');
+    var pnv = document.getElementById('profile-name-value');
+    if (nm)  nm.textContent = v.value;
+    if (pnv) pnv.textContent = v.value;
+    if (av) {
+      var initials = v.value.split(' ').map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2);
+      av.textContent = initials;
+    }
+
+    closeNameEditModal();
+    showToast('✅ Display name updated');
+  } catch (e) {
+    if (err) {
+      err.textContent = (e && e.message) ? e.message : 'Could not update name.';
+      err.style.display = 'block';
+    }
+    flHapticError();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save name'; }
+  }
+}
+
+function openPasswordChangeModal() {
+  if (!currentUser) return;
+  var modal = document.getElementById('password-change-modal');
+  if (!modal) return;
+  var cur = document.getElementById('password-change-current');
+  var nxt = document.getElementById('password-change-next');
+  var cfm = document.getElementById('password-change-confirm');
+  var err = document.getElementById('password-change-err');
+  if (cur) cur.value = '';
+  if (nxt) nxt.value = '';
+  if (cfm) cfm.value = '';
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
+  modal.style.display = 'flex';
+  setTimeout(function(){ try { cur && cur.focus(); } catch(_) {} }, 30);
+}
+
+function closePasswordChangeModal() {
+  var modal = document.getElementById('password-change-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function savePasswordChange() {
+  if (!sb || !currentUser) return;
+  var cur = document.getElementById('password-change-current');
+  var nxt = document.getElementById('password-change-next');
+  var cfm = document.getElementById('password-change-confirm');
+  var err = document.getElementById('password-change-err');
+  var btn = document.getElementById('password-change-btn');
+  if (!cur || !nxt || !cfm) return;
+
+  var v = validatePasswordChange(cur.value, nxt.value, cfm.value);
+  if (!v.ok) {
+    if (err) { err.textContent = v.error; err.style.display = 'block'; }
+    flHapticError();
+    return;
+  }
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+
+  try {
+    // 1. Re-authenticate with the current password. Supabase doesn't
+    //    require this for updateUser() (an active session is enough), but
+    //    without a knowledge check anyone who borrows an unlocked device
+    //    could change the password and lock out the owner. Calling
+    //    signInWithPassword reuses the existing client session slot on
+    //    success — no double-session.
+    var reauth = await sb.auth.signInWithPassword({
+      email: currentUser.email,
+      password: cur.value,
+    });
+    if (reauth.error) {
+      // Supabase returns 'Invalid login credentials' for a bad password.
+      // Translate to something less alarming (the user IS logged in).
+      throw new Error('Current password is incorrect.');
+    }
+
+    // 2. Update to the new password.
+    var upd = await sb.auth.updateUser({ password: nxt.value });
+    if (upd.error) throw upd.error;
+    if (upd.data && upd.data.user) currentUser = upd.data.user;
+
+    closePasswordChangeModal();
+    showToast('✅ Password updated');
+  } catch (e) {
+    if (err) {
+      err.textContent = (e && e.message) ? e.message : 'Could not update password.';
+      err.style.display = 'block';
+    }
+    flHapticError();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Update password'; }
+  }
+}
+
 function authTab(mode) {
   authMode = mode;
   document.getElementById('tab-signin').classList.toggle('on', mode === 'signin');
@@ -1887,6 +2062,10 @@ function onSignedIn() {
   if (av) av.textContent = initials;
   if (nm) nm.textContent = name;
   if (em) em.textContent = currentUser.email + ' · Synced';
+  // Profile card (Settings tab): mirror the same name under the "Display
+  // name" row so the Edit button has a current value to open with.
+  var pnv = document.getElementById('profile-name-value');
+  if (pnv) pnv.textContent = name;
   // Set current season label dynamically
   currentSeason = getCurrentSeason();
   var sl = document.getElementById('season-label');

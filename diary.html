@@ -77,6 +77,34 @@
   </div>
 </div>
 
+<div id="name-edit-modal" class="di-modal-ov di-modal-ov--center di-modal-ov--above-toast" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="name-edit-title">
+  <div class="di-modal-card">
+    <div class="di-modal-title" id="name-edit-title">Edit display name</div>
+    <p class="di-modal-lede">Used on your account card, in PDF signatures, and alongside your entries in any syndicate you belong to. Changing it updates those places only — existing shooter names on past diary entries are left as they were.</p>
+    <label class="di-modal-field-lbl" for="name-edit-input">Your name</label>
+    <input type="text" id="name-edit-input" class="di-modal-input" placeholder="e.g. John Smith" autocomplete="name" maxlength="60">
+    <div class="auth-err di-modal-err" id="name-edit-err" style="display:none;"></div>
+    <button type="button" class="di-btn-full di-btn-pri-solid" id="name-edit-btn" data-fl-action="save-name-edit">Save name</button>
+    <button type="button" class="di-btn-full di-btn-sec-tonal" data-fl-action="close-name-edit">Cancel</button>
+  </div>
+</div>
+
+<div id="password-change-modal" class="di-modal-ov di-modal-ov--center di-modal-ov--above-toast" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
+  <div class="di-modal-card">
+    <div class="di-modal-title" id="password-change-title">Change password</div>
+    <p class="di-modal-lede">Enter your current password for security, then pick a new one of at least 8 characters.</p>
+    <label class="di-modal-field-lbl" for="password-change-current">Current password</label>
+    <input type="password" id="password-change-current" class="di-modal-input" placeholder="••••••••" autocomplete="current-password">
+    <label class="di-modal-field-lbl" for="password-change-next">New password</label>
+    <input type="password" id="password-change-next" class="di-modal-input" placeholder="At least 8 characters" autocomplete="new-password">
+    <label class="di-modal-field-lbl" for="password-change-confirm">Confirm new password</label>
+    <input type="password" id="password-change-confirm" class="di-modal-input" placeholder="Type the new password again" autocomplete="new-password">
+    <div class="auth-err di-modal-err" id="password-change-err" style="display:none;"></div>
+    <button type="button" class="di-btn-full di-btn-pri-solid" id="password-change-btn" data-fl-action="save-password-change">Update password</button>
+    <button type="button" class="di-btn-full di-btn-sec-tonal" data-fl-action="close-password-change">Cancel</button>
+  </div>
+</div>
+
 <!-- ══ LIST ══ -->
 <div id="v-list" class="view">
   <div class="list-hdr">
@@ -664,6 +692,23 @@
     </div>
     <div class="account-row-sub">
       <button type="button" class="signout-all-link" data-fl-action="open-signout-all" title="Invalidate the session on this device and every other device signed in to this account.">Sign out of all devices</button>
+    </div>
+    <div class="profile-card" role="group" aria-label="Profile settings">
+      <div class="profile-card-title">Profile</div>
+      <div class="profile-row">
+        <div class="profile-row-main">
+          <div class="profile-row-label">Display name</div>
+          <div class="profile-row-value" id="profile-name-value">–</div>
+        </div>
+        <button type="button" class="profile-row-btn" data-fl-action="open-name-edit" aria-label="Edit display name">Edit</button>
+      </div>
+      <div class="profile-row">
+        <div class="profile-row-main">
+          <div class="profile-row-label">Password</div>
+          <div class="profile-row-value profile-row-value--muted">••••••••</div>
+        </div>
+        <button type="button" class="profile-row-btn" data-fl-action="open-password-change" aria-label="Change password">Change</button>
+      </div>
     </div>
     <!-- Delete account -->
     <div class="danger-zone">

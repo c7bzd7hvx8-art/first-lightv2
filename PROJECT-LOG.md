@@ -4,6 +4,43 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Settings: self-serve display-name + password changes
+
+User asked whether Cull Diary currently lets someone change their name after signup. It didn't: name was effectively write-once (`auth.user_metadata.full_name` at sign-up) and the settings card only had sign-out / delete actions. We shipped both requested profile actions in-app: **Edit display name** and **Change password**, with explicit confirmation that historical entry shooter text should not be rewritten.
+
+### What changed
+
+- `modules/profile.mjs` (new): pure validators for both flows:
+  - `validateDisplayName(raw)` → trims + collapses whitespace, enforces 2–60 chars, allows real-world punctuation (`'` `-` `.`), supports Unicode letters, rejects punctuation-only names.
+  - `validatePasswordChange(current, next, confirm)` → non-empty fields, new >= 8 chars (aligned to signup rule), new != current, confirm match.
+- `tests/profile.test.mjs` (new): 16 unit tests covering happy paths + failure cases for both validators.
+- `diary.html`: in Settings, added a **Profile** card with two rows:
+  - Display name row + **Edit** button.
+  - Password row + **Change** button.
+  Also added two modal dialogs:
+  - `#name-edit-modal` (save/cancel, guidance that historical shooter labels are unchanged).
+  - `#password-change-modal` (current/new/confirm fields).
+- `diary.css`: styles for the new profile card / row / buttons, aligned with the existing settings visual language (white card, compact controls, focus-visible parity).
+- `diary.js`:
+  - imports validator helpers from `modules/profile.mjs`.
+  - updates `onSignedIn()` to populate `#profile-name-value`.
+  - adds six action handlers: `open/close/save` for name and password modals.
+  - name-save path:
+    1) validates with `validateDisplayName`,
+    2) `sb.auth.updateUser({ data: { full_name } })`,
+    3) best-effort updates `syndicate_members.display_name` for all rows of the current user,
+    4) refreshes account/profile UI labels and initials.
+  - password-save path:
+    1) validates with `validatePasswordChange`,
+    2) re-authenticates via `signInWithPassword(email,currentPassword)`,
+    3) updates via `sb.auth.updateUser({ password: newPassword })`.
+  - Historical cull entry shooter text is intentionally untouched (user confirmed this behavior).
+- `sw.js`: `SW_VERSION` `7.73 → 7.74`; pre-cache now includes `./modules/profile.mjs`.
+
+Tests now **230/230 passing**.
+
+---
+
 ## 2026-04-17 — Launch-readiness blocker #6: client-side error logger
 
 Closing out the last open item on the pre-launch scorecard. Before shipping to the tight beta group we wanted a way to see what breaks in the wild without setting up a full crash-reporting stack — a single table of recent errors in the Supabase dashboard is plenty for the scale we're at.
