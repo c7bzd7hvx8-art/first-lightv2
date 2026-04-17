@@ -42,7 +42,8 @@ If you change **any** policy, RLS toggle, helper SQL used by policies, or storag
 
 | Date | What | Where stored |
 |------|------|----------------|
-| 2026-04-16 | **Shipped as source (NOT YET RUN):** `scripts/fl-app-errors-table.sql` — new `public.app_errors` table for best-effort client-side error capture. Insert-only RLS policy `app_errors_insert_anyone` grants `insert` to `anon, authenticated`; no SELECT / UPDATE / DELETE policies exist, so anon cannot read back what it wrote (you view rows in the Supabase dashboard as service_role). Idempotent file — safe to re-run. User will run this in SQL Editor; tracked in Pending until done. | `scripts/fl-app-errors-table.sql`, this file |
+| 2026-04-17 | Ran `scripts/fl-app-errors-table.sql` in Supabase SQL Editor — **success** (no rows returned). `public.app_errors` table now live with the `app_errors_insert_anyone` RLS policy (insert-only, granted to `anon, authenticated`). Cull Diary client (SW 7.73) will start writing one row per distinct error, capped at 25 per session with 5-minute dedupe. View rows in the dashboard Table Editor as service_role. | SQL Editor result (chat), `scripts/fl-app-errors-table.sql`, this file |
+| 2026-04-16 | Shipped `scripts/fl-app-errors-table.sql` as source: new `public.app_errors` table for best-effort client-side error capture. Insert-only RLS policy `app_errors_insert_anyone` grants `insert` to `anon, authenticated`; no SELECT / UPDATE / DELETE policies exist, so anon cannot read back what it wrote. Idempotent file — safe to re-run. Run row logged above on 2026-04-17. | `scripts/fl-app-errors-table.sql`, this file |
 | 2026-04-16 | Ran `supabase-verify-drift.sql` after v2 deploy — **success** (no rows returned). Drift check 3i confirms the new `e.syndicate_id = p_syndicate_id` filter is present on `syndicate_member_larder_for_manager(uuid, text)`. | SQL Editor result (chat), this file |
 | 2026-04-16 | Ran `syndicate-manager-larder.sql` v2 in Supabase SQL Editor — **success** (no rows returned). Team Larder RPC now filters on explicit per-entry attribution (`e.syndicate_id = p_syndicate_id`), matching the other three syndicate RPCs from the 2026-04-15 migration. C2 bug resolved. | SQL Editor result (chat), `scripts/syndicate-manager-larder.sql`, this file |
 | 2026-04-16 | Team Larder Book RPC v2 shipped as source: added `e.syndicate_id = p_syndicate_id` filter. Without it, no-ground-filter syndicates swallowed sibling syndicate attributions (C2 smoke test caught it). Also added weak_function drift check 3i. | `scripts/syndicate-manager-larder.sql`, `scripts/supabase-verify-drift.sql`, this file |
@@ -75,7 +76,7 @@ If you change **any** policy, RLS toggle, helper SQL used by policies, or storag
 
 *(Agent: if something is needed but not in repo, list it here with the exact query file or SQL snippet. Remove rows when done.)*
 
-- [ ] **Run `scripts/fl-app-errors-table.sql`** — creates `public.app_errors` (client-side error capture table) with an `insert-anyone` RLS policy on the `anon, authenticated` roles. Paste the file into the Supabase SQL Editor and hit Run. Expected result: success, no rows returned. The sanity-check SELECTs at the bottom of the file are commented — uncomment if you want to confirm RLS is on and the policy exists. After running, tick this box and append a Changelog row below.
+- [x] ~~Run `scripts/fl-app-errors-table.sql`~~ — done 2026-04-17
 - [x] ~~Run `scripts/migrate-add-tag-number.sql`~~ — done 2026-04-15
 - [x] ~~Run `scripts/migrate-add-abnormalities.sql`~~ — done 2026-04-16
 - [x] ~~Run `scripts/syndicate-manager-larder.sql`~~ — done 2026-04-16
