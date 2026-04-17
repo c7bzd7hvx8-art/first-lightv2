@@ -3,9 +3,25 @@
 --
 -- Purpose: a single manager-facing larder book that lists every carcass a
 -- syndicate's active members have entered into their own diaries in a season,
--- scoped to the syndicate's optional ground_filter. Produces the same column
--- set the single-user Larder Book PDF uses, plus a `user_id` so the UI can
--- join member display names.
+-- scoped to the syndicate's explicit per-entry attribution (and preserved
+-- optional ground_filter as a belt-and-braces check). Produces the same
+-- column set the single-user Larder Book PDF uses, plus a `user_id` so the
+-- UI can join member display names.
+--
+-- Attribution model:
+--   * Each row of `cull_entries` carries a nullable `syndicate_id` set when
+--     the shooter tagged that carcass to a particular syndicate at entry
+--     time. This RPC filters on it (same as `syndicate_season_summary` and
+--     `syndicate_member_actuals_for_manager` post the 2026-04-15 explicit-
+--     attribution migration). Without this filter a no-ground-filter
+--     syndicate (e.g. an individual-allocation one) would swallow entries
+--     a member tagged to a different syndicate.
+--   * `ground_filter` is retained as a redundant consistency check: if the
+--     manager has set one on the syndicate, rows that happen to carry the
+--     syndicate_id but a mismatching ground are still excluded. Belt-and-
+--     braces — a manager can't accidentally bring sacks of someone else's
+--     permission into the larder book even if an entry's syndicate_id is
+--     mistyped.
 --
 -- Differences vs `syndicate_member_actuals_for_manager`:
 --   * Returns the full larder payload (tag, weight, age, destination, ground,
@@ -24,8 +40,17 @@
 -- call this; anon/members get "Manager only".
 --
 -- Run in Supabase SQL Editor after `migrate-add-abnormalities.sql` (this RPC
--- references the `abnormalities` / `abnormalities_other` columns).
+-- references the `abnormalities` / `abnormalities_other` columns) and after
+-- `syndicate-explicit-attribution.sql` (this RPC references
+-- `cull_entries.syndicate_id`).
 -- Idempotent — safe to re-run on schema/policy changes.
+--
+-- Changelog:
+--   2026-04-16 v2  Added explicit `e.syndicate_id = p_syndicate_id` guard.
+--                  v1 (initial) filtered only on member roster + ground_filter,
+--                  which caused a no-filter syndicate to swallow entries
+--                  attributed to a sibling syndicate sharing the same member.
+--   2026-04-16 v1  Initial.
 -- =============================================================================
 
 DROP FUNCTION IF EXISTS public.syndicate_member_larder_for_manager(uuid, text);
@@ -90,7 +115,8 @@ BEGIN
     ON m.syndicate_id = p_syndicate_id
    AND m.user_id = e.user_id
    AND m.status = 'active'
-  WHERE (e.date)::date BETWEEN b.d_start AND b.d_end
+  WHERE e.syndicate_id = p_syndicate_id
+    AND (e.date)::date BETWEEN b.d_start AND b.d_end
     AND (
       s.ground_filter IS NULL
       OR trim(both from coalesce(e.ground, '')) = trim(both from s.ground_filter)

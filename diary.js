@@ -45,14 +45,17 @@ import {
   buildSyndicateLarderBookPDF,
   buildGameDealerDeclarationPDF,
   buildConsignmentDealerDeclarationPDF,
+  buildSeasonSummaryPDF,
+  buildSyndicateSeasonSummaryPDF,
   syndicateFileSlug as flSyndicateFileSlug,
   userProfileDisplayName as flUserProfileDisplayName
 } from './modules/pdf.mjs';
-// Phase-2 / Commits I–K: 7 PDF exports live in pdf.mjs.
-// Remaining 3 PDFs (exportSeasonSummary, exportSyndicateSeasonSummaryPdf,
-// exportPDF-shim) stay in diary.js for now — season summaries are the
-// biggest chunk (~680 lines) and land in Commit L with a dedupe of the
-// `fmtEntryDate*` helpers. See MODULARISATION-PLAN.md.
+// Phase-2 / Commits I–L: 9 PDF exports live in pdf.mjs. All rich / compliance
+// rendering (header bands, palettes, signature blocks, page footers) is now
+// shared via primitives inside the module. The Season Summary wrappers that
+// remain in diary.js (`exportSeasonSummary`, `exportSyndicateSeasonSummaryPdf`)
+// are thin: they gather the globals the builders need and toast on success.
+// See MODULARISATION-PLAN.md.
 import {
   SVG_PLAN_TARGET_ICON, SVG_CULL_MAP_EMPTY_PIN,
   SVG_FL_CLOUD, SVG_FL_CLIPBOARD, SVG_FL_CAMERA, SVG_FL_IMAGE_GALLERY,
@@ -720,6 +723,11 @@ var currentUser   = null;
 var allEntries    = [];
 /** All-season rows for Summary PDF modal only (see openSummaryFilter). */
 var summaryEntryPool = null;
+/** All-season rows for Export CSV/PDF modal only (see openExportModal).
+ *  Separate from summaryEntryPool so opening one modal doesn't blow away
+ *  state for the other, even though they share the same season+ground
+ *  filter pattern. */
+var exportEntryPool = null;
 var filteredEntries = [];
 var currentFilter = 'all';
 var currentGroundFilter = 'all';
@@ -833,7 +841,9 @@ function initDiaryFlUi() {
       case 'open-summary-filter':
         void openSummaryFilter();
         break;
-      case 'do-export': doExport(el.getAttribute('data-export-scope')); break;
+      case 'do-export-filtered':
+        void doExportFiltered();
+        break;
       case 'do-export-summary':
         doExportSummaryFiltered().catch(function(err) {
           if (typeof console !== 'undefined' && console.warn) console.warn('doExportSummaryFiltered', err);
@@ -890,7 +900,6 @@ function initDiaryFlUi() {
       case 'open-edit-entry': openEditEntry(el.getAttribute('data-entry-id')); break;
       case 'export-single-pdf': exportSinglePDF(el.getAttribute('data-entry-id')); break;
       case 'export-declaration': exportGameDealerDeclaration(el.getAttribute('data-entry-id')); break;
-      case 'export-larder-book': exportLarderBookPDF(); break;
       case 'delete-entry': deleteEntry(el.getAttribute('data-entry-id')); break;
       case 'gt-step':
         gtStep(el.getAttribute('data-gt-id'), parseInt(el.getAttribute('data-gt-delta'), 10));
@@ -3965,61 +3974,200 @@ async function deleteAccount() {
 }
 var exportFormat = 'csv';
 
-async function openExportModal(format) {
-  exportFormat = format;
-  document.getElementById('export-modal-title').textContent = format === 'csv' ? 'Export CSV' : 'Export PDF';
-  document.getElementById('export-season-lbl').textContent = seasonLabel(currentSeason);
-  document.getElementById('export-season-count').textContent = allEntries.length + ' entries';
+/**
+ * Slug a free-form label (season key, ground name, …) into a filesystem-safe
+ * lowercase hyphenated token suitable for embedding in an export filename.
+ * Kept local to diary.js since the export modal is the only caller — the
+ * Summary flow builds filenames differently.
+ */
+function exportFilenameSlug(str) {
+  return String(str == null ? '' : str).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
 
-  // Fetch total all-entries count
-  if (sb && currentUser) {
-    try {
-      var all = await sb.from('cull_entries').select('id', { count: 'exact' }).eq('user_id', currentUser.id);
-      var total = all.count || 0;
-      document.getElementById('export-all-count').textContent = total + ' entries across all seasons';
-    } catch(e) {
-      document.getElementById('export-all-count').textContent = '– entries across all seasons';
-    }
+/**
+ * Open the Export CSV / PDF modal.
+ *
+ * Mirrors the Summary Season modal (openSummaryFilter): same bottom-sheet
+ * chrome, same Season + Ground selects, same live "Entries matching selection"
+ * preview. The only thing that swaps between the two is the title / button
+ * copy — driven by `format`. Designed so a user who exports via Stats → PDF
+ * gets the identical filter UI as Stats → Summary.
+ */
+async function openExportModal(format) {
+  if (!sb || !currentUser) {
+    showToast('⚠️ Sign in to export');
+    return;
   }
 
-  var modal = document.getElementById('export-modal');
-  modal.style.display = 'flex';
-}
+  exportFormat = format;
+  exportEntryPool = null;
 
-function closeExportModal() {
-  document.getElementById('export-modal').style.display = 'none';
-}
+  // Title / button copy swaps per format. "larder" is a third variant that
+  // reuses the same Season + Ground picker the CSV / PDF formats use — gets
+  // the user out of having to switch the global season selector first when
+  // they want to generate a past season's larder book (e.g. "give me 2024-25"
+  // on 1st Aug when the app has already rolled to 2025-26).
+  var titleEl = document.getElementById('export-modal-title');
+  var btnLblEl = document.getElementById('export-generate-lbl');
+  var copy = format === 'csv'    ? { title: 'Export CSV',         btn: 'Generate CSV' }
+           : format === 'larder' ? { title: 'Export Larder Book', btn: 'Generate Larder Book' }
+           :                       { title: 'Export PDF',         btn: 'Generate PDF' };
+  if (titleEl) titleEl.textContent = copy.title;
+  if (btnLblEl) btnLblEl.textContent = copy.btn;
 
-async function doExport(scope) {
-  closeExportModal();
-  if (scope === 'season') {
-    if (exportFormat === 'csv') exportCSV();
-    else exportPDF();
-  } else {
-    if (!sb || !currentUser) {
-      showToast('⚠️ Sign in to export');
-      return;
-    }
-    // Fetch ALL entries across all seasons.
-    // Columns are the union of what exportCSVData() and exportPDFData()
-    // actually read — we deliberately omit the big ones (weather_data
-    // JSONB, photo_url, abnormalities, lat/lng, created_at) because
-    // neither "all seasons" CSV nor the simple PDF surfaces them. Saves
-    // several KB per row on large archives and keeps the query snappy.
-    showToast('⏳ Fetching all entries…');
+  // Load the full cross-season pool (mirror Summary). Offline / fetch error
+  // degrades gracefully to just the currently-loaded season in memory so
+  // the modal still works for a round-trip-less export.
+  if (navigator.onLine) {
     try {
+      showToast('⏳ Loading diary…');
       var r = await sb.from('cull_entries')
         .select('date, time, species, sex, location_name, ground, weight_kg, tag_number, calibre, distance_m, shot_placement, age_class, shooter, destination, notes')
         .eq('user_id', currentUser.id)
         .order('date', { ascending: false });
-      if (r.error || !r.data.length) { showToast('⚠️ No entries found'); return; }
-      var allData = r.data;
-      if (exportFormat === 'csv') exportCSVData(allData, 'all-seasons');
-      else exportPDFData(allData, 'All Seasons');
-    } catch(e) {
-      showToast('⚠️ Export failed — ' + (e.message || 'network error'));
+      if (r.error) throw r.error;
+      exportEntryPool = r.data || [];
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.warn) console.warn('openExportModal fetch:', err);
+      exportEntryPool = allEntries.slice();
+      showToast('⚠️ Could not load full history — using current season only');
+    }
+  } else {
+    exportEntryPool = allEntries.slice();
+    if (exportEntryPool.length) {
+      showToast('📶 Offline — export uses loaded season only');
     }
   }
+
+  if (!exportEntryPool.length) {
+    showToast('⚠️ No entries to export');
+    return;
+  }
+
+  // Populate season dropdown from the full pool (not the current-season slice).
+  // Always include currentSeason so the user can pick the active season even
+  // when the pool is a memory fallback that happens to miss it.
+  var seasonSel = document.getElementById('export-season-sel');
+  seasonSel.innerHTML = '<option value="__all__">All Seasons</option>';
+  var seasonSet = {};
+  exportEntryPool.forEach(function(e) {
+    var s = buildSeasonFromEntry(e.date);
+    if (s) seasonSet[s] = true;
+  });
+  if (currentSeason && currentSeason !== '__all__') seasonSet[currentSeason] = true;
+  var seasons = Object.keys(seasonSet).sort().reverse();
+  seasons.forEach(function(s) {
+    var opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = seasonLabel(s);
+    if (s === currentSeason) opt.selected = true;
+    seasonSel.appendChild(opt);
+  });
+
+  var groundSel = document.getElementById('export-ground-sel');
+  groundSel.innerHTML = '<option value="__all__">All grounds</option>';
+  var groundSet = {};
+  exportEntryPool.forEach(function(e) {
+    if (e.ground && e.ground.trim()) groundSet[e.ground.trim()] = true;
+  });
+  Object.keys(groundSet).sort().forEach(function(g) {
+    var opt = document.createElement('option');
+    opt.value = g;
+    opt.textContent = g;
+    groundSel.appendChild(opt);
+  });
+
+  function updateCount() {
+    var sel = getFilteredExportEntries();
+    document.getElementById('export-match-count').textContent = sel.length;
+  }
+  seasonSel.onchange = updateCount;
+  groundSel.onchange = updateCount;
+  updateCount();
+
+  document.getElementById('export-modal').style.display = 'flex';
+}
+
+function closeExportModal() {
+  document.getElementById('export-modal').style.display = 'none';
+  exportEntryPool = null;
+}
+
+/**
+ * Filter the loaded export pool by the current season+ground select values.
+ * Mirrors getFilteredSummaryEntries so both modals always agree on what a
+ * given (season, ground) pair means.
+ */
+function getFilteredExportEntries() {
+  var pool = exportEntryPool && exportEntryPool.length ? exportEntryPool : allEntries;
+  var seasonSel = document.getElementById('export-season-sel');
+  var groundSel = document.getElementById('export-ground-sel');
+  var season = seasonSel ? seasonSel.value : '__all__';
+  var ground = groundSel ? groundSel.value : '__all__';
+  return pool.filter(function(e) {
+    var inSeason = season === '__all__' || buildSeasonFromEntry(e.date) === season;
+    var inGround = ground === '__all__' || (e.ground && e.ground.trim() === ground);
+    return inSeason && inGround;
+  });
+}
+
+async function doExportFiltered() {
+  var entries = getFilteredExportEntries();
+  if (!entries.length) { showToast('⚠️ No entries match selection'); return; }
+
+  var seasonSel = document.getElementById('export-season-sel');
+  var groundSel = document.getElementById('export-ground-sel');
+  var season = seasonSel ? seasonSel.value : '__all__';
+  var ground = groundSel ? groundSel.value : '__all__';
+  var isAllSeasons = season === '__all__';
+  var isAllGrounds = ground === '__all__';
+
+  // Human-readable label: shown in the PDF title and success toast ("CSV
+  // downloaded — N entries"). Grounded exports get the ground appended so it
+  // reads naturally in the exported document.
+  var titleLabel = isAllSeasons ? 'All Seasons' : seasonLabel(season);
+  if (!isAllGrounds) titleLabel += ' — ' + ground;
+
+  // Slug for filename: "cull-diary-<seasonSlug>[-<groundSlug>]".
+  var slugParts = [isAllSeasons ? 'all-seasons' : season];
+  if (!isAllGrounds) slugParts.push(exportFilenameSlug(ground));
+  var filenameSlug = slugParts.filter(Boolean).join('-');
+
+  closeExportModal();
+
+  if (exportFormat === 'csv') {
+    // exportCSVData uses its second arg directly as the filename suffix, so
+    // feeding it the slug yields cull-diary-<slug>.csv.
+    exportCSVData(entries, filenameSlug);
+    return;
+  }
+
+  if (exportFormat === 'larder') {
+    // Delegate to the Larder Book builder with the modal's filtered entries.
+    // Builder handles its own "Left on hill" exclusion + chronological sort,
+    // and understands `__all__` for the season argument (renders a date-range
+    // scope line instead of a single-season label).
+    var lardRes = buildLarderBookPDF({
+      filteredEntries: entries,
+      user: currentUser,
+      season: isAllSeasons ? '__all__' : season
+    });
+    if (lardRes) {
+      showToast('✅ Larder Book PDF downloaded');
+    } else {
+      // buildLarderBookPDF returns null when every entry in the filtered set
+      // is "Left on hill" — surface that specifically rather than a generic
+      // "no entries" (which would mislead the user who just saw a non-zero
+      // count in the modal).
+      showToast('No larder entries in this selection (all "Left on hill").');
+    }
+    return;
+  }
+
+  // exportPDFData forwards `filenameSlug` into buildSimpleDiaryPDF, which
+  // uses it verbatim when present (overriding the legacy "all-seasons" vs
+  // season-based branching).
+  exportPDFData(entries, titleLabel, isAllSeasons ? null : season, filenameSlug);
 }
 
 function exportCSV() {
@@ -4076,14 +4224,18 @@ function exportPDF() {
   exportPDFData(allEntries, seasonLabel(currentSeason));
 }
 
-function exportPDFData(entries, label) {
+function exportPDFData(entries, label, seasonOverride, filenameSlug) {
   // Thin shim over modules/pdf.mjs → buildSimpleDiaryPDF.
-  // Kept here (rather than wiring the caller directly) so legacy call sites
-  // inside diary.js continue to work during Phase 2.
+  // - `seasonOverride`: used when exporting a past season so the builder's
+  //   default filename branch picks up the right season tag.
+  // - `filenameSlug`: used when the export modal added a ground filter (or
+  //   composed a multi-part slug); overrides buildSimpleDiaryPDF's default
+  //   season-vs-all-seasons filename logic entirely.
   var res = buildSimpleDiaryPDF({
     entries: entries,
     label: label,
-    season: currentSeason
+    season: seasonOverride || currentSeason,
+    filenameSlug: filenameSlug || null
   });
   if (res) showToast('✅ PDF downloaded - ' + res.count + ' entries');
 }
@@ -4092,382 +4244,25 @@ function exportPDFData(entries, label) {
 // Full formatted report: header, stats, species breakdown,
 // cull plan vs actual, complete entries table with pagination
 function exportSeasonSummary() {
-  var entries = allEntries;
-  if (!entries.length) { showToast('⚠️ No entries to export'); return; }
-
-  // A4 landscape (was portrait). Portrait's 559pt usable width couldn't fit the
-  // detail columns a deer manager actually needs for end-of-season reporting
-  // (Tag, Age class, Destination — required for Reg 853/2004 traceability and
-  // BDS/AHDB annual returns). Landscape gives us 806pt, enough for all 13 columns
-  // at 7pt without crushing Notes.
-  var doc = new jspdf.jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
-  var PW = 842, PH = 595; // A4 landscape in pt
-  var ML = 18, MR = 18;   // left/right margins
-  var UW = PW - ML - MR;  // usable width = 806pt
-
-  // ── Colour helpers ──
-  function rgb(hex) {
-    var r = parseInt(hex.slice(1,3),16)/255;
-    var g = parseInt(hex.slice(3,5),16)/255;
-    var b = parseInt(hex.slice(5,7),16)/255;
-    return [r,g,b];
-  }
-  var C = {
-    deep:   '#0e2a08', forest: '#1a3a0e', moss:   '#5a7a30',
-    gold:   '#c8a84b', bark:   '#3d2b1f', muted:  '#a0988a',
-    stone:  '#ede9e2', white:  '#ffffff',
-    red:    '#c8a84b', roe:    '#5a7a30', fallow: '#f57f17',
-    muntjac:'#6a1b9a', sika:   '#1565c0', cwd:    '#00695c',
-    male:   '#8b4513', female: '#8b1a4a', done:   '#2d7a1a',
-  };
-  function setFill(hex)   { var c=rgb(hex); doc.setFillColor(c[0]*255,c[1]*255,c[2]*255); }
-  function setStroke(hex) { var c=rgb(hex); doc.setDrawColor(c[0]*255,c[1]*255,c[2]*255); }
-  function setFont(hex)   { var c=rgb(hex); doc.setTextColor(c[0]*255,c[1]*255,c[2]*255); }
-
-  function hrule(y, col) {
-    setStroke(col||C.stone); doc.setLineWidth(0.3);
-    doc.line(0, y, PW, y);
-  }
-
-  function newPageIfNeeded(y, needed) {
-    if (y + needed > PH - 50) {
-      doc.addPage();
-      // Mini header on continuation pages (match “All Seasons” vs single season)
-      setFill(C.deep); doc.rect(0, 0, PW, 24, 'F');
-      setFont(C.gold); doc.setFontSize(7); doc.setFont(undefined,'bold');
-      var hdrSeason = window._summarySeasonLabel
-        ? String(window._summarySeasonLabel).toUpperCase()
-        : String(currentSeason).toUpperCase();
-      doc.text('FIRST LIGHT  -  CULL DIARY  -  ' + hdrSeason, ML, 15);
-      return 32;
-    }
-    return y;
-  }
-
-  // ── Stats from entries ──
-  // Average kg must be divided by entries that ACTUALLY have a recorded weight,
-  // not the total entry count — otherwise missing weights pull the average down
-  // and the headline figure is misleading (e.g. 104kg across 2 weighed + 3 unweighed
-  // entries previously showed "21kg" instead of the correct 52kg per carcass).
-  var weighedEntries = entries.filter(function(e){ return hasValue(e.weight_kg); });
-  var totalKg  = weighedEntries.reduce(function(s,e){ return s+(parseFloat(e.weight_kg)||0); },0);
-  var avgKg    = weighedEntries.length ? Math.round(totalKg / weighedEntries.length) : 0;
-  var spSet    = {};
-  entries.forEach(function(e){ spSet[e.species]=(spSet[e.species]||0)+1; });
-  var spCount  = Object.keys(spSet).length;
-  var spColors = { 'Red Deer':C.red,'Roe Deer':C.roe,'Fallow':C.fallow,
-                   'Muntjac':C.muntjac,'Sika':C.sika,'CWD':C.cwd };
-
-  // ── Generate display date ──
-  function fmtEntryDate(d) {
-    if (!d) return '';
-    var p = parseEntryDateParts(d);
-    if (!p) {
-      var s = String(d).trim();
-      return s || '—';
-    }
-    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return p.day + ' ' + months[p.m - 1] + ' ' + p.y;
-  }
-  function fmtEntryTime(t) {
-    if (t === null || t === undefined || t === '') return '–';
-    var s = String(t).trim();
-    return s || '–';
-  }
-
-  // ═══════════════════════════════════════
-  // PAGE 1
-  // ═══════════════════════════════════════
-  var y = 0;
-
-  // Header band — HDR_H from stacked lines so URL / generated never overlap
-  var now = diaryNow();
-  var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var _pdfHm = (function(d){ var p=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d); return {h:parseInt(p.find(function(x){return x.type==='hour';}).value),m:parseInt(p.find(function(x){return x.type==='minute';}).value)}; }(now));
-  var genDate = now.getDate()+' '+mo[now.getMonth()]+' '+now.getFullYear()+
-    '  -  '+('0'+_pdfHm.h).slice(-2)+':'+('0'+_pdfHm.m).slice(-2);
-  var hasGr = window._summaryGroundOverride && window._summaryGroundOverride !== 'All Grounds';
-  var metaUrlY = hasGr ? 74 : 58;
-  var metaGenY = metaUrlY + 13;
-  var HDR_H = metaGenY + 16;
-
-  setFill(C.deep); doc.rect(0, 0, PW, HDR_H, 'F');
-  setFill(C.forest); doc.rect(0, 0, PW/2, HDR_H, 'F');
-  setStroke(C.gold); doc.setLineWidth(1.5);
-  doc.line(0, HDR_H, PW, HDR_H);
-
-  setFont(C.gold); doc.setFontSize(7); doc.setFont(undefined,'bold');
-  doc.text('FIRST LIGHT  -  CULL DIARY', ML, 18);
-  setFont(C.white); doc.setFontSize(22); doc.setFont(undefined,'bold');
-  var pdfSeasonTitle = (window._summarySeasonLabel || (currentSeason + ' Season Report'));
-  doc.text(pdfSeasonTitle, ML, 42);
-  if (hasGr) {
-    setFont(C.gold); doc.setFontSize(9); doc.setFont(undefined,'bold');
-    doc.text('Ground: ' + window._summaryGroundOverride, ML, 58);
-  }
-  setFont('#aaaaaa'); doc.setFontSize(10); doc.setFont(undefined,'normal');
-  doc.text('firstlightdeer.co.uk', ML, metaUrlY);
-  setFont(C.gold); doc.setFontSize(7); doc.setFont(undefined,'normal');
-  doc.text('Generated '+genDate, ML, metaGenY);
-
-  y = HDR_H;
-
-  // Stats row
-  var STAT_H = 46, cw = PW/4;
-  var statData = [
-    [String(entries.length), 'Total Cull'],
-    [String(spCount),        'Species'],
-    [String(Math.round(totalKg)), 'Total kg'],
-    [avgKg ? String(avgKg)+'kg' : '–', 'Avg kg' + (weighedEntries.length && weighedEntries.length < entries.length ? ' (of ' + weighedEntries.length + ')' : '')],
-  ];
-  statData.forEach(function(s, i) {
-    var x = i*cw;
-    setFill(i%2===0 ? C.white : '#faf8f5'); doc.rect(x, y, cw, STAT_H, 'F');
-    if (i>0) { setStroke(C.stone); doc.setLineWidth(0.5); doc.line(x,y,x,y+STAT_H); }
-    setFont(C.bark); doc.setFontSize(20); doc.setFont(undefined,'bold');
-    doc.text(s[0], x+cw/2, y+22, {align:'center'});
-    setFont(C.muted); doc.setFontSize(7); doc.setFont(undefined,'bold');
-    doc.text(s[1].toUpperCase(), x+cw/2, y+35, {align:'center'});
+  // Thin wrapper over modules/pdf.mjs → buildSeasonSummaryPDF.
+  // Gathers the globals the builder needs (entries / season / targets /
+  // plan species / ground-override carried on `window`) and toasts on
+  // success. The 378-line renderer now lives in the module; see
+  // MODULARISATION-PLAN.md → Phase-2 / Commit L.
+  if (!allEntries.length) { showToast('⚠️ No entries to export'); return; }
+  const res = buildSeasonSummaryPDF({
+    entries: allEntries,
+    season:  currentSeason,
+    seasonLabelOverride: window._summarySeasonLabel || null,
+    groundOverride:      window._summaryGroundOverride || null,
+    // "All Seasons" deliberately blanks cullTargets so the Cull Plan vs
+    // Actual section is suppressed (targets are per-season; rendering them
+    // across all seasons produces a wall of "N (no target set)" rows).
+    cullTargets: (window._summarySeasonLabel === 'All Seasons') ? {} : cullTargets,
+    planSpecies: PLAN_SPECIES,
+    now: diaryNow(),
   });
-  hrule(y+STAT_H, C.stone);
-  y += STAT_H;
-
-  // ── Section header helper ──
-  function secHdr(y, title) {
-    setFill('#f0ece6'); doc.rect(0, y, PW, 18, 'F');
-    setStroke(C.stone); doc.setLineWidth(0.5); doc.line(0,y+18,PW,y+18);
-    setFont(C.moss); doc.setFontSize(7); doc.setFont(undefined,'bold');
-    doc.text(title.toUpperCase(), ML, y+11);
-    return y+18;
-  }
-
-  // ── Species breakdown ──
-  y = secHdr(y, 'Species Breakdown');
-  var spSorted = Object.keys(spSet).sort(function(a,b){ return spSet[b]-spSet[a]; });
-  var spMax = Math.max.apply(null, spSorted.map(function(k){ return spSet[k]; }));
-  var totalWtBySpecies = {};
-  entries.forEach(function(e){ totalWtBySpecies[e.species]=(totalWtBySpecies[e.species]||0)+(parseFloat(e.weight_kg)||0); });
-
-  // Rescaled for landscape — bars stretch further right so the row doesn't look
-  // left-weighted with a big empty band between the count and the weight.
-  var bxBar = 180, bwBar = 450, bhBar = 5;
-  var spCountX = bxBar + bwBar + 25; // count sits just after the bar
-  spSorted.forEach(function(sp) {
-    y += 22;
-    var base = y;
-    var clr = spColors[sp] || C.moss;
-    setFill(clr); doc.circle(22, base - 3, 3.5, 'F');
-    setFont(C.bark); doc.setFontSize(10); doc.setFont(undefined,'bold');
-    doc.text(sp, 32, base);
-    setFill(C.stone); doc.roundedRect(bxBar, base - 5, bwBar, bhBar, 2, 2, 'F');
-    setFill(clr); doc.roundedRect(bxBar, base - 5, bwBar * (spSet[sp] / spMax), bhBar, 2, 2, 'F');
-    setFont(C.bark); doc.setFontSize(10); doc.setFont(undefined,'bold');
-    doc.text(String(spSet[sp]), spCountX, base);
-    setFont(C.muted); doc.setFontSize(9); doc.setFont(undefined,'normal');
-    var wtStr = totalWtBySpecies[sp] ? Math.round(totalWtBySpecies[sp]) + ' kg' : '';
-    doc.text(wtStr, PW - MR, base, { align: 'right' });
-    hrule(base + 10, C.stone);
-    y = base + 10;
-  });
-
-  // Species breakdown — total row. Matches the "TOTAL" line the Season Plan shows
-  // in the Stats tab so a dealer/auditor reading the PDF gets the same rollup.
-  if (spSorted.length) {
-    y += 22;
-    var spTotalBase = y;
-    var spGrandTotal = entries.length;
-    var spGrandKg = Math.round(
-      spSorted.reduce(function(s, k) { return s + (totalWtBySpecies[k] || 0); }, 0)
-    );
-    setFont(C.bark); doc.setFontSize(9); doc.setFont(undefined, 'bold');
-    doc.text('TOTAL', 32, spTotalBase);
-    setFont(C.bark); doc.setFontSize(10); doc.setFont(undefined, 'bold');
-    doc.text(String(spGrandTotal), spCountX, spTotalBase);
-    setFont(C.muted); doc.setFontSize(9); doc.setFont(undefined, 'bold');
-    doc.text(spGrandKg ? spGrandKg + ' kg' : '–', PW - MR, spTotalBase, { align: 'right' });
-    hrule(spTotalBase + 10, C.stone);
-    y = spTotalBase + 10;
-  }
-
-  // ── Cull Plan vs Actual ──
-  // Cull targets are per-season. When the user picks "All Seasons" the export flow
-  // deliberately blanks `cullTargets`, which means every row in this table would
-  // otherwise render as "1 (no target set)" — noisy and confusing (see user report).
-  // Skip the whole section for All Seasons; targets only make sense alongside a
-  // single-season actual.
-  var isAllSeasons = window._summarySeasonLabel === 'All Seasons';
-  var actuals = {};
-  entries.forEach(function(e) { var k = e.species + '-' + e.sex; actuals[k] = (actuals[k] || 0) + 1; });
-  var planRows = 0;
-  if (!isAllSeasons) {
-    PLAN_SPECIES.forEach(function(sp) {
-      var mT = cullTargets[sp.name + '-m'] || 0, fT = cullTargets[sp.name + '-f'] || 0;
-      var mA = actuals[sp.name + '-m'] || 0, fA = actuals[sp.name + '-f'] || 0;
-      [[mT, mA, 'Male'], [fT, fA, 'Female']].forEach(function(row) {
-        var tgt = row[0], act = row[1], sex = row[2];
-        if (!tgt && !act) return;
-        planRows++;
-      });
-    });
-  }
-  if (planRows > 0) {
-    y += 10;
-    y = secHdr(y, 'Cull Plan vs Actual');
-    var planTargetSum = 0, planActualSum = 0;
-    PLAN_SPECIES.forEach(function(sp) {
-      var mT = cullTargets[sp.name + '-m'] || 0, fT = cullTargets[sp.name + '-f'] || 0;
-      var mA = actuals[sp.name + '-m'] || 0, fA = actuals[sp.name + '-f'] || 0;
-      // Draw the species name on the FIRST row that actually renders, not hard-coded
-      // to the male row. Previously a species with only female data (e.g. Muntjac Doe
-      // with no Muntjac Buck target) produced an orphan "Doe" row with no species label.
-      var spLabelDrawn = false;
-      [['m', mT, mA], ['f', fT, fA]].forEach(function(row) {
-        var sx = row[0], tgt = row[1], act = row[2];
-        if (!tgt && !act) return;
-        planTargetSum += tgt;
-        planActualSum += act;
-        y += 16;
-        var sexLbl = sx === 'm' ? sp.mLbl : sp.fLbl;
-        setFont(C.bark); doc.setFontSize(9); doc.setFont(undefined, 'bold');
-        if (!spLabelDrawn) { doc.text(sp.name, ML, y); spLabelDrawn = true; }
-        setFont(sx === 'm' ? C.male : C.female); doc.setFont(undefined, 'normal');
-        doc.text(sexLbl, 82, y);
-        var bx = 180, bw = 520, bh = 4;
-        if (tgt > 0) {
-          var pct = Math.min(1, act / tgt), done = act >= tgt;
-          setFill(C.stone); doc.roundedRect(bx, y - 3, bw, bh, 2, 2, 'F');
-          setFill(done ? C.done : C.moss); doc.roundedRect(bx, y - 3, bw * pct, bh, 2, 2, 'F');
-          setFont(done ? C.done : C.bark); doc.setFontSize(9); doc.setFont(undefined, 'bold');
-          doc.text(act + '/' + tgt + (done ? ' (done)' : ''), PW - MR, y, { align: 'right' });
-        } else {
-          setFont(C.muted); doc.setFontSize(9); doc.setFont(undefined, 'normal');
-          doc.text(String(act) + ' (no target set)', PW - MR, y, { align: 'right' });
-        }
-        hrule(y + 6, C.stone);
-      });
-    });
-
-    // Cull plan — total row. Matches the "TOTAL x/y" rollup the Season Plan shows
-    // in the Stats tab. Only draws the progress bar when at least one target was set.
-    y += 16;
-    var bx = 180, bw = 520, bh = 5;
-    setFont(C.bark); doc.setFontSize(9); doc.setFont(undefined, 'bold');
-    doc.text('TOTAL', ML, y);
-    if (planTargetSum > 0) {
-      var tPct = Math.min(1, planActualSum / planTargetSum);
-      var tDone = planActualSum >= planTargetSum;
-      setFill(C.stone); doc.roundedRect(bx, y - 3, bw, bh, 2, 2, 'F');
-      setFill(tDone ? C.done : C.gold); doc.roundedRect(bx, y - 3, bw * tPct, bh, 2, 2, 'F');
-      setFont(tDone ? C.done : C.bark); doc.setFontSize(10); doc.setFont(undefined, 'bold');
-      doc.text(planActualSum + '/' + planTargetSum + (tDone ? ' (done)' : ''), PW - MR, y, { align: 'right' });
-    } else {
-      setFont(C.muted); doc.setFontSize(9); doc.setFont(undefined, 'normal');
-      doc.text(String(planActualSum) + ' culls', PW - MR, y, { align: 'right' });
-    }
-    hrule(y + 7, C.stone);
-  }
-
-  // ── Entries table (landscape A4, 13 columns) ──
-  // Column widths total 806pt (= UW). Order chosen so identifiers (date, species,
-  // sex, tag) read left-to-right first, then carcass data (weight, age, destination),
-  // then location/admin, then notes last (widest, right-hand side).
-  y += 10;
-  y = secHdr(y, 'All Entries — ' + entries.length + ' records');
-
-  var W_DATE = 52, W_TIME = 30, W_SP = 62, W_SEX = 40, W_TAG = 44, W_WT = 38,
-      W_AGE = 52, W_GRND = 62, W_PLACE = 54, W_SHOOT = 56, W_DEST = 60,
-      W_LOC = 80, W_NOTES = 176;
-  // total = 52+30+62+40+44+38+52+62+54+56+60+80+176 = 806 (== UW)
-
-  var COL = {
-    date:      ML,
-    time:      ML + W_DATE,
-    species:   ML + W_DATE + W_TIME,
-    sex:       ML + W_DATE + W_TIME + W_SP,
-    tag:       ML + W_DATE + W_TIME + W_SP + W_SEX,
-    weight:    ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG,
-    age:       ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG + W_WT,
-    ground:    ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG + W_WT + W_AGE,
-    placement: ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG + W_WT + W_AGE + W_GRND,
-    shooter:   ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG + W_WT + W_AGE + W_GRND + W_PLACE,
-    dest:      ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG + W_WT + W_AGE + W_GRND + W_PLACE + W_SHOOT,
-    location:  ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG + W_WT + W_AGE + W_GRND + W_PLACE + W_SHOOT + W_DEST,
-    notes:     ML + W_DATE + W_TIME + W_SP + W_SEX + W_TAG + W_WT + W_AGE + W_GRND + W_PLACE + W_SHOOT + W_DEST + W_LOC
-  };
-
-  // Collapse long age labels ("Calf / Kid / Fawn" etc.) to the first word so
-  // the 52pt column can display them without ellipsis. "Adult", "Yearling",
-  // "Calf" are the common forms after normalising.
-  function shortAge(v) {
-    if (!v) return '–';
-    var s = String(v).trim();
-    if (!s) return '–';
-    return s.split(/\s*\/\s*|\s+/)[0] || s;
-  }
-
-  var TB = 7;
-  y += 18;
-  setFill('#f0ece6'); doc.rect(0, y - 14, PW, 18, 'F');
-  setFont(C.muted); doc.setFontSize(6.5); doc.setFont(undefined,'bold');
-  var hdrs = [
-    ['DATE', COL.date], ['TIME', COL.time], ['SPECIES', COL.species], ['SEX', COL.sex],
-    ['TAG', COL.tag], ['WT(kg)', COL.weight], ['AGE', COL.age],
-    ['GROUND', COL.ground], ['PLACE', COL.placement], ['SHOOTER', COL.shooter],
-    ['DEST', COL.dest], ['LOCATION', COL.location], ['NOTES', COL.notes]
-  ];
-  hdrs.forEach(function(h) { doc.text(h[0], h[1], y - 3); });
-  hrule(y + 4, C.stone);
-
-  entries.forEach(function(e, i) {
-    y = newPageIfNeeded(y, 22);
-    y += 18;
-    setFill(i % 2 === 0 ? C.white : '#fdfcfa'); doc.rect(0, y - 12, PW, 18, 'F');
-    doc.setFontSize(TB); setFont(C.bark); doc.setFont(undefined, 'normal');
-    doc.text(fmtEntryDate(e.date), COL.date, y);
-    doc.text(fmtEntryTime(e.time), COL.time, y);
-    doc.text((e.species || '').slice(0, 16), COL.species, y);
-    setFont(e.sex === 'm' ? C.male : C.female); doc.setFont(undefined, 'bold');
-    doc.text(sexLabel(e.sex, e.species), COL.sex, y);
-    setFont(C.bark); doc.setFont(undefined, 'normal');
-    doc.text((e.tag_number ? String(e.tag_number) : '–').slice(0, 10), COL.tag, y);
-    doc.text(hasValue(e.weight_kg) ? (String(e.weight_kg).slice(0, 8)) : '–', COL.weight, y);
-    doc.text(shortAge(e.age_class).slice(0, 10), COL.age, y);
-    var gnd = (e.ground && String(e.ground).trim()) ? String(e.ground).trim() : '–';
-    var gLines = doc.splitTextToSize(gnd, W_GRND - 2);
-    doc.text(gLines.length > 1 ? gLines[0] + '…' : (gLines[0] || '–'), COL.ground, y);
-    doc.text((e.shot_placement || '–').slice(0, 12), COL.placement, y);
-    doc.text((e.shooter && e.shooter !== 'Self' ? e.shooter : '–').slice(0, 14), COL.shooter, y);
-    var dest = (e.destination && String(e.destination).trim()) ? String(e.destination).trim() : '–';
-    var dLines = doc.splitTextToSize(dest, W_DEST - 2);
-    doc.text(dLines.length > 1 ? dLines[0] + '…' : (dLines[0] || '–'), COL.dest, y);
-    var locRaw = String(e.location_name || '–');
-    var locLines = doc.splitTextToSize(locRaw, W_LOC - 2);
-    doc.text(locLines.length > 1 ? locLines[0] + '…' : (locLines[0] || '–'), COL.location, y);
-    var noteRaw = (e.notes && String(e.notes).trim()) ? String(e.notes).replace(/\s+/g, ' ').trim() : '–';
-    var noteLines = doc.splitTextToSize(noteRaw, W_NOTES - 2);
-    doc.text(noteLines.length > 1 ? noteLines[0] + '…' : (noteLines[0] || '–'), COL.notes, y);
-    hrule(y + 4, C.stone);
-  });
-
-  // Footer on each page
-  var pageCount = doc.internal.getNumberOfPages();
-  for (var p=1; p<=pageCount; p++) {
-    doc.setPage(p);
-    setStroke(C.stone); doc.setLineWidth(0.5); doc.line(0,PH-38,PW,PH-38);
-    setFont(C.muted); doc.setFontSize(7); doc.setFont(undefined,'normal');
-    doc.text('First Light  -  Cull Diary  -  Page '+p+' of '+pageCount, ML, PH-24);
-    setFont(C.gold);
-    doc.text('firstlightdeer.co.uk', PW-MR, PH-24, {align:'right'});
-  }
-
-  var summaryFilename = window._summarySeasonLabel
-    ? 'first-light-all-seasons'
-    : 'first-light-season-' + currentSeason;
-  if (window._summaryGroundOverride && window._summaryGroundOverride !== 'All Grounds') {
-    summaryFilename += '-' + window._summaryGroundOverride.replace(/[^a-z0-9]/gi, '-').toLowerCase();
-  }
-  doc.save(summaryFilename + '.pdf');
-  showToast('✅ Season summary downloaded');
+  if (res) showToast('✅ Season summary downloaded');
 }
 
 // ── Syndicate manager export (species, sex, date, culled-by only) ──
@@ -4801,298 +4596,17 @@ function exportSyndicateListPDF(rows, syndicateName, seasonLabelStr, filenameBas
 }
 
 function exportSyndicateSeasonSummaryPdf(syndicate, season, entries, summaryRows) {
-  var doc = new jspdf.jsPDF({ unit: 'pt', format: 'a4' });
-  var PW = 595, PH = 842, ML = 18, MR = 18;
-
-  function rgb(hex) {
-    var r = parseInt(hex.slice(1, 3), 16) / 255;
-    var g = parseInt(hex.slice(3, 5), 16) / 255;
-    var b = parseInt(hex.slice(5, 7), 16) / 255;
-    return [r, g, b];
-  }
-  var C = {
-    deep: '#0e2a08', forest: '#1a3a0e', moss: '#5a7a30',
-    gold: '#c8a84b', bark: '#3d2b1f', muted: '#a0988a',
-    stone: '#ede9e2', white: '#ffffff',
-    red: '#c8a84b', roe: '#5a7a30', fallow: '#f57f17',
-    muntjac: '#6a1b9a', sika: '#1565c0', cwd: '#00695c',
-    male: '#8b4513', female: '#8b1a4a', done: '#2d7a1a'
-  };
-  var spColors = { 'Red Deer': C.red, 'Roe Deer': C.roe, 'Fallow': C.fallow,
-    'Muntjac': C.muntjac, 'Sika': C.sika, 'CWD': C.cwd };
-
-  function setFill(hex) { var c = rgb(hex); doc.setFillColor(c[0] * 255, c[1] * 255, c[2] * 255); }
-  function setStroke(hex) { var c = rgb(hex); doc.setDrawColor(c[0] * 255, c[1] * 255, c[2] * 255); }
-  function setFont(hex) { var c = rgb(hex); doc.setTextColor(c[0] * 255, c[1] * 255, c[2] * 255); }
-
-  function hrule(y, col) {
-    setStroke(col || C.stone);
-    doc.setLineWidth(0.3);
-    doc.line(0, y, PW, y);
-  }
-
-  function newPageIfNeeded(y, needed) {
-    if (y + needed > PH - 50) {
-      doc.addPage();
-      setFill(C.deep);
-      doc.rect(0, 0, PW, 24, 'F');
-      setFont(C.gold);
-      doc.setFontSize(7);
-      doc.setFont(undefined, 'bold');
-      doc.text('FIRST LIGHT  -  SYNDICATE  -  ' + String(season).toUpperCase(), ML, 15);
-      return 32;
-    }
-    return y;
-  }
-
-  function secHdr(y0, title) {
-    setFill('#f0ece6');
-    doc.rect(0, y0, PW, 18, 'F');
-    setStroke(C.stone);
-    doc.setLineWidth(0.5);
-    doc.line(0, y0 + 18, PW, y0 + 18);
-    setFont(C.moss);
-    doc.setFontSize(7);
-    doc.setFont(undefined, 'bold');
-    doc.text(title.toUpperCase(), ML, y0 + 11);
-    return y0 + 18;
-  }
-
-  function fmtEntryDatePdf(d) {
-    if (!d) return '—';
-    var p = parseEntryDateParts(d);
-    if (!p) return String(d);
-    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return p.day + ' ' + months[p.m - 1] + ' ' + p.y;
-  }
-
-  var now = diaryNow();
-  var mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  var _pdfHm = (function(d) {
-    var p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
-    return { h: parseInt(p.find(function(x) { return x.type === 'hour'; }).value, 10), m: parseInt(p.find(function(x) { return x.type === 'minute'; }).value, 10) };
-  }(now));
-  var genDate = now.getDate() + ' ' + mo[now.getMonth()] + ' ' + now.getFullYear() +
-    '  -  ' + ('0' + _pdfHm.h).slice(-2) + ':' + ('0' + _pdfHm.m).slice(-2);
-
-  var HDR_H = 94;
-  setFill(C.deep);
-  doc.rect(0, 0, PW, HDR_H, 'F');
-  setFill(C.forest);
-  doc.rect(0, 0, PW / 2, HDR_H, 'F');
-  setStroke(C.gold);
-  doc.setLineWidth(1.5);
-  doc.line(0, HDR_H, PW, HDR_H);
-
-  setFont(C.gold);
-  doc.setFontSize(7);
-  doc.setFont(undefined, 'bold');
-  doc.text('FIRST LIGHT  -  SYNDICATE SUMMARY', ML, 18);
-  setFont(C.white);
-  doc.setFontSize(20);
-  doc.setFont(undefined, 'bold');
-  doc.text(syndicate.name, ML, 42);
-  setFont(C.gold);
-  doc.setFontSize(10);
-  doc.setFont(undefined, 'normal');
-  doc.text(seasonLabel(season), ML, 58);
-  setFont('#aaaaaa');
-  doc.setFontSize(10);
-  doc.text('firstlightdeer.co.uk', ML, 72);
-  setFont(C.gold);
-  doc.setFontSize(7);
-  doc.text('Generated ' + genDate, ML, 84);
-
-  var y = HDR_H + 12;
-
-  var mCount = entries.filter(function(e) { return e.sex === 'm'; }).length;
-  var fCount = entries.filter(function(e) { return e.sex === 'f'; }).length;
-  var spSet = {};
-  entries.forEach(function(e) { spSet[e.species] = (spSet[e.species] || 0) + 1; });
-  var spCount = Object.keys(spSet).length;
-
-  var STAT_H = 46, cw = PW / 4;
-  var statData = [
-    [String(entries.length), 'Total culls'],
-    [String(spCount), 'Species'],
-    [String(mCount), 'Male'],
-    [String(fCount), 'Female']
-  ];
-  statData.forEach(function(s, i) {
-    var x = i * cw;
-    setFill(i % 2 === 0 ? C.white : '#faf8f5');
-    doc.rect(x, y, cw, STAT_H, 'F');
-    if (i > 0) {
-      setStroke(C.stone);
-      doc.setLineWidth(0.5);
-      doc.line(x, y, x, y + STAT_H);
-    }
-    setFont(C.bark);
-    doc.setFontSize(20);
-    doc.setFont(undefined, 'bold');
-    doc.text(s[0], x + cw / 2, y + 22, { align: 'center' });
-    setFont(C.muted);
-    doc.setFontSize(7);
-    doc.setFont(undefined, 'bold');
-    doc.text(s[1].toUpperCase(), x + cw / 2, y + 35, { align: 'center' });
+  // Thin wrapper over modules/pdf.mjs → buildSyndicateSeasonSummaryPDF.
+  // 295-line renderer now lives in the module; this passes the PLAN_SPECIES
+  // roster + the local planSpeciesMeta resolver through so the module stays
+  // independent of diary.js globals.
+  buildSyndicateSeasonSummaryPDF({
+    syndicate, season, entries,
+    summaryRows,
+    planSpecies: PLAN_SPECIES,
+    planSpeciesMeta: planSpeciesMeta,
+    now: diaryNow(),
   });
-  hrule(y + STAT_H, C.stone);
-  y += STAT_H;
-
-  y = secHdr(y, 'Species breakdown');
-  var spSorted = Object.keys(spSet).sort(function(a, b) { return spSet[b] - spSet[a]; });
-  if (!spSorted.length) {
-    y += 14;
-    setFont(C.muted);
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'normal');
-    doc.text('No culls recorded for this season.', ML, y);
-    y += 8;
-  }
-  var spMax = Math.max.apply(null, spSorted.map(function(k) { return spSet[k]; }).concat([1]));
-  var bxBar = 130, bwBar = 210, bhBar = 5;
-  spSorted.forEach(function(sp) {
-    y += 22;
-    var base = y;
-    var clr = spColors[sp] || C.moss;
-    setFill(clr);
-    doc.circle(22, base - 3, 3.5, 'F');
-    setFont(C.bark);
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'bold');
-    doc.text(sp, 32, base);
-    setFill(C.stone);
-    doc.roundedRect(bxBar, base - 5, bwBar, bhBar, 2, 2, 'F');
-    setFill(clr);
-    doc.roundedRect(bxBar, base - 5, bwBar * (spSet[sp] / spMax), bhBar, 2, 2, 'F');
-    setFont(C.bark);
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'bold');
-    doc.text(String(spSet[sp]), 355, base);
-    hrule(base + 10, C.stone);
-    y = base + 10;
-  });
-
-  var byKey = {};
-  (summaryRows || []).forEach(function(row) {
-    var k = row.species + '-' + row.sex;
-    byKey[k] = row;
-  });
-  var planRows = 0;
-  PLAN_SPECIES.forEach(function(ps) {
-    ['m', 'f'].forEach(function(sx) {
-      var row = byKey[ps.name + '-' + sx];
-      var tgt = row ? parseInt(row.target_total, 10) || 0 : 0;
-      var act = row ? parseInt(row.actual_total, 10) || 0 : 0;
-      if (tgt || act) planRows++;
-    });
-  });
-
-  if (planRows > 0) {
-    y += 10;
-    y = secHdr(y, 'Cull plan vs actual');
-    PLAN_SPECIES.forEach(function(ps) {
-      var spMeta = planSpeciesMeta(ps.name);
-      // Draw the species name on the FIRST row that actually renders (see matching
-      // comment in exportSeasonSummary). Species with only-female data used to appear
-      // as an orphan "Doe" row with no species label.
-      var spLabelDrawn = false;
-      ['m', 'f'].forEach(function(sx) {
-        var row = byKey[ps.name + '-' + sx];
-        var tgt = row ? parseInt(row.target_total, 10) || 0 : 0;
-        var act = row ? parseInt(row.actual_total, 10) || 0 : 0;
-        if (!tgt && !act) return;
-        y += 16;
-        var sexLbl = sx === 'm' ? (spMeta.mLbl || 'Male') : (spMeta.fLbl || 'Female');
-        setFont(C.bark);
-        doc.setFontSize(9);
-        doc.setFont(undefined, 'bold');
-        if (!spLabelDrawn) { doc.text(ps.name, ML, y); spLabelDrawn = true; }
-        setFont(sx === 'm' ? C.male : C.female);
-        doc.setFont(undefined, 'normal');
-        doc.text(sexLbl, 120, y);
-        var bx = 200, bw = 220, bh = 4;
-        if (tgt > 0) {
-          var pct = Math.min(1, act / tgt);
-          var done = act >= tgt;
-          setFill(C.stone);
-          doc.roundedRect(bx, y - 3, bw, bh, 2, 2, 'F');
-          setFill(done ? C.done : C.moss);
-          doc.roundedRect(bx, y - 3, bw * pct, bh, 2, 2, 'F');
-          setFont(done ? C.done : C.bark);
-          doc.setFontSize(9);
-          doc.setFont(undefined, 'bold');
-          doc.text(act + '/' + tgt + (done ? ' (done)' : ''), PW - MR, y, { align: 'right' });
-        } else {
-          setFont(C.muted);
-          doc.setFontSize(9);
-          doc.setFont(undefined, 'normal');
-          doc.text(String(act) + ' (no target set)', PW - MR, y, { align: 'right' });
-        }
-        hrule(y + 6, C.stone);
-      });
-    });
-  }
-
-  y += 10;
-  y = newPageIfNeeded(y, 40);
-  y = secHdr(y, 'All entries — ' + entries.length + ' records');
-
-  var W_DATE = 78, W_SP = 100, W_SEX = 52, W_BY = PW - ML - MR - W_DATE - W_SP - W_SEX;
-  var COL = {
-    date: ML,
-    species: ML + W_DATE,
-    sex: ML + W_DATE + W_SP,
-    by: ML + W_DATE + W_SP + W_SEX
-  };
-
-  y += 18;
-  setFill('#f0ece6');
-  doc.rect(0, y - 14, PW, 18, 'F');
-  setFont(C.muted);
-  doc.setFontSize(6.5);
-  doc.setFont(undefined, 'bold');
-  doc.text('DATE', COL.date, y - 3);
-  doc.text('SPECIES', COL.species, y - 3);
-  doc.text('SEX', COL.sex, y - 3);
-  doc.text('CULLED BY', COL.by, y - 3);
-  hrule(y + 4, C.stone);
-
-  entries.forEach(function(e, i) {
-    y = newPageIfNeeded(y, 22);
-    y += 18;
-    setFill(i % 2 === 0 ? C.white : '#fdfcfa');
-    doc.rect(0, y - 12, PW, 18, 'F');
-    doc.setFontSize(7);
-    setFont(C.bark);
-    doc.setFont(undefined, 'normal');
-    doc.text(fmtEntryDatePdf(e.cull_date), COL.date, y);
-    doc.text(String(e.species || '').slice(0, 22), COL.species, y);
-    setFont(e.sex === 'm' ? C.male : C.female);
-    doc.setFont(undefined, 'bold');
-    doc.text(sexLabel(e.sex, e.species), COL.sex, y);
-    setFont(C.bark);
-    doc.setFont(undefined, 'normal');
-    var byLines = doc.splitTextToSize(String(e.culledBy || '—'), W_BY - 2);
-    doc.text(byLines.length ? byLines[0] : '—', COL.by, y);
-    hrule(y + 4, C.stone);
-  });
-
-  var pageCount = doc.internal.getNumberOfPages();
-  for (var p = 1; p <= pageCount; p++) {
-    doc.setPage(p);
-    setStroke(C.stone);
-    doc.setLineWidth(0.5);
-    doc.line(0, PH - 38, PW, PH - 38);
-    setFont(C.muted);
-    doc.setFontSize(7);
-    doc.setFont(undefined, 'normal');
-    doc.text('First Light  -  ' + syndicate.name + '  -  Page ' + p + ' of ' + pageCount, ML, PH - 24);
-    setFont(C.gold);
-    doc.text('firstlightdeer.co.uk', PW - MR, PH - 24, { align: 'right' });
-  }
-
-  doc.save('syndicate-' + syndicateFileSlug(syndicate.name) + '-summary-' + season + '.pdf');
   showToast('✅ Syndicate summary downloaded');
 }
 
@@ -5112,19 +4626,11 @@ function userProfileDisplayName() {
   return flUserProfileDisplayName(currentUser);
 }
 
-function exportLarderBookPDF() {
-  // Thin shim over modules/pdf.mjs → buildLarderBookPDF.
-  // The module handles "Left on hill" filtering, chronological sort (now
-  // non-mutating — was an in-place sort of filteredEntries before), the
-  // stalker-line lookup from currentUser, and the scope line.
-  var res = buildLarderBookPDF({
-    filteredEntries: filteredEntries,
-    user: currentUser,
-    season: currentSeason
-  });
-  if (res) showToast('✅ Larder Book PDF downloaded');
-  else    showToast('No larder entries in this season.');
-}
+// Note: the solo `exportLarderBookPDF()` shim was removed when the Larder Book
+// button moved to the unified Season + Ground export modal (`openExportModal`
+// with `format='larder'` → `doExportFiltered` calls `buildLarderBookPDF`
+// directly). This frees the user from having to switch the global season
+// selector back to a past season just to get its larder book.
 
 /**
  * Team Larder Book — manager export. Every carcass that entered the larder

@@ -4,6 +4,333 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-16 — Phase 2 / Commit L: Season Summary builders moved into `modules/pdf.mjs`
+
+Final chunk of the Phase-2 PDF modularisation. Both remaining renderers — `exportSeasonSummary` (378 lines, A4 landscape, 13-column entries table) and `exportSyndicateSeasonSummaryPdf` (295 lines, A4 portrait, 4-column entries table) — now live as `buildSeasonSummaryPDF` / `buildSyndicateSeasonSummaryPDF` in `modules/pdf.mjs`. The diary.js wrappers shrank from 673 lines total to ~30 and just forward the globals (`allEntries`, `currentSeason`, `cullTargets`, `PLAN_SPECIES`, `planSpeciesMeta`, `diaryNow()`) plus the `window._summarySeasonLabel` / `window._summaryGroundOverride` UI state the old renderer consulted via closure.
+
+### Deduplication wins
+Both old renderers had their own inline copies of the palette object (`C.deep`, `C.gold`, …), `rgb`/`setFill`/`setStroke`/`setFont` helpers, and a bespoke `secHdr` + `newPageIfNeeded`. New builders consume `PDF_PALETTE` + the shared `setPdfFill` / `setPdfStroke` / `setPdfText` / `drawRichHeaderBand` primitives — ~60 lines of boilerplate gone per builder. Header bands now match the rest of the rich family visually (same duotone, same gold eyebrow spacing).
+
+### Filename contract preserved
+- Season Summary: `first-light-season-<code>.pdf` (current season), `first-light-all-seasons.pdf` (label override), `…-<slugged-ground>.pdf` appended when a single ground is selected. `"All Grounds"` does not append a suffix. *Locked by 4 tests.*
+- Syndicate summary: `syndicate-<slug>-summary-<code>.pdf`. Safe-slug fallback when the syndicate name is missing. *Locked by a test.*
+
+### Tests (+10 new, 69 total in pdf.test.mjs, 158 in the full suite)
+Extended `FakeDoc` with `circle` / `roundedRect` / `internal.getNumberOfPages` (the Season Summary footer loop uses the legacy `doc.internal.getNumberOfPages()` path) and fixed the constructor to read `{orientation}` from the options object instead of treating the first arg as a raw string. New tests cover: empty-guard, filename for season / all-seasons / ground / "All Grounds" / syndicate slug, Cull Plan section suppressed for "All Seasons", Cull Plan progress bar (`2/5`, `1/4`) rendered when targets exist, "No culls recorded" fallback for empty syndicate summaries, and null-syndicate-name safety.
+
+Files: `diary.js` (two thin wrappers + one extra import), `modules/pdf.mjs` (two new builders at the tail), `tests/pdf.test.mjs` (FakeDoc extension + 10 new tests), `sw.js` v7.63.
+
+### What's left in the modularisation plan
+Only the remaining stats builders in diary.js — the age, calibre/distance, trends, and ground breakdowns (~800 lines across ~4 smaller commits). PDF side is complete for Phase 2.
+
+---
+
+## 2026-04-16 — Trained Hunter Declaration: declaration body now wraps to page
+
+Smoke test flagged the declaration line `"I, the undersigned trained hunter, declare that I have examined this carcass and"` overflowing past the right margin before breaking. Root cause: three hard-coded `doc.text(..., 20, y)` calls with pre-chosen break points, and the first line was ~200mm wide at 10pt on a 210mm page (182mm usable after 14mm margins) — it simply didn't fit. Fixed by joining the three lines into one sentence and running it through `doc.splitTextToSize(text, pageW - 40)`, matching the pattern already used in the Consignment Declaration. File: `modules/pdf.mjs` → `buildGameDealerDeclarationPDF`. `sw.js` v7.62.
+
+---
+
+## 2026-04-16 — PDF design system: Stage 2 (rich) + Stage 3 (professional) propagation
+
+User confirmed calibration: *"some colour in professional but not overly colourful"*. Then **go ahead** — propagated the new design language across five more PDFs in one pass.
+
+### Scale-aware helpers
+Both `drawRichHeaderBand` and `drawProfessionalHeader` (plus `drawPdfFooter` and `drawSignatureBlock`) now accept an optional `{ scale }` so a single implementation serves both **mm-unit** docs (jspdf default: Simple Diary, Single Entry, Solo Larder, Team Larder, Trained Hunter Declaration) and **pt-unit** docs (Consignment Declaration, Season Summary). `scale = 25.4/72 ≈ 0.353` for the rich helper on mm docs, `scale = 72/25.4 ≈ 2.83` for the professional helper + footer + signature on the pt-unit consignment doc. Font sizes are left unscaled — jspdf measures those in points regardless of doc unit.
+
+### Stage 3 — Professional family (restrained colour)
+All four now use `drawProfessionalHeader`: thin 4pt moss rule across the top edge, gold `FIRST LIGHT · CULL DIARY` eyebrow, black title, grey subtitle / scope. No fills, no zebra, no coloured column headers.
+- **Team Larder Book** — already done in the reference pass.
+- **Solo Larder Book** — replaced bespoke `setFontSize(16)` title + grey subtitle with the shared helper; added totals bar (thin-ruled frame, no fill), shared `drawSignatureBlock` (was typewriter underscores), shared `drawPdfFooter` (was a single centred `Produced by…` line, now with `Page N of M`).
+- **Trained Hunter Declaration (per-carcass)** — swapped the centred 18pt title + horizontal rule for the shared professional header; replaced typewriter signature line with `drawSignatureBlock`; added `drawPdfFooter`. Subtitle now names the regulation (`Regulation (EC) 853/2004`).
+- **Consignment Dealer Declaration** — swapped the filled-green table-header bar for bold-black caps on a hairline rule (same calibration as the other tables); removed the parchment zebra stripe; replaced the centred title block with the shared professional header (scaled to pt); `drawSignatureBlock` + `drawPdfFooter` now produce the trained-hunter signature + page footer in pt units.
+
+### Stage 2 — Rich family (stalker-facing)
+Both now use `drawRichHeaderBand`: full-width duotone dark-green band, gold eyebrow, white title, optional gold subtitle + muted meta line. Same band the user already approved on Season Summary.
+- **Simple Diary PDF** (`buildSimpleDiaryPDF`) — dropped the ad-hoc `Cull Diary - <label>` / `First Light · firstlightdeer.co.uk · N entries` pair for the full rich band with title, subtitle (`N entries`), brand URL and `Generated <date - time>` stamp. Row dividers switched from the default black hairline to a soft stone-coloured rule matching the palette. Added `drawPdfFooter` for multi-page safety. Page-break threshold now driven by `pageH - 24` instead of the hard-coded `270`.
+- **Single-entry Cull Record** (`buildSingleEntryPDF`) — dropped the two-tone plain-text title for a proper rich header whose subtitle carries *species · sex · long-form date*. Added `drawPdfFooter`. Page break driven by `pageH - 24` for long-notes safety.
+
+### Consistency fixes
+- "1 carcass" / "1 carcasses" pluralisation corrected everywhere via `plural(n, singular, pluralForm)`.
+- Every PDF now finishes with the same `Produced by First Light Cull Diary — firstlightdeer.co.uk  ·  Page N of M` footer.
+- Every signature rule is now a real 0.3pt grey line rather than typewriter `___________` underscores.
+
+### Files
+- `modules/pdf.mjs` — `drawRichHeaderBand`, `drawProfessionalHeader`, `drawPdfFooter`, `drawSignatureBlock` all take `{ scale }`; `buildSimpleDiaryPDF`, `buildSingleEntryPDF`, `buildLarderBookPDF`, `buildGameDealerDeclarationPDF`, `buildConsignmentDealerDeclarationPDF` rewritten to use the shared primitives.
+- `tests/pdf.test.mjs` — all 59 tests still pass (no test changes needed beyond the 5 added in the previous pass).
+- `sw.js` — cache v7.61.
+
+### Pending
+- **Stage 4** — still to move `exportSeasonSummary` + `exportSyndicateSeasonSummaryPdf` from `diary.js` into `modules/pdf.mjs` (Commit L). Now that the rich primitives exist in the module, that move will deduplicate ~120 lines of palette + header drawing that currently sits inline in `diary.js`.
+- Smoke-test the six refreshed PDFs in-browser before committing.
+
+---
+
+## 2026-04-16 — PDF design system: shared primitives + professional header (Team Larder reference)
+
+Feedback on the first Team Larder refresh was *"I like the season summary design, can the others not be closer to it. However, the trained hunter declaration, larder book, consignment dealer declaration need to have that professional look to it."* — and later *"some colour but not overly colourful"*. So split the PDF catalogue into two families and extracted the design primitives into shared helpers.
+
+### Families
+- **Rich family** (stalker-facing): Simple Diary PDF, Single-entry Cull Record, Season Summary, Syndicate Season Summary. Dark-green band + gold eyebrow + white title + muted meta, as per the Season Summary the user already approved.
+- **Professional family** (audit / dealer-facing): Solo Larder, Team Larder, Trained Hunter Declaration, Consignment Dealer Declaration. Single thin moss-green rule at top + small gold eyebrow + black title + grey subtitle / scope line. No fill bands, no zebra, no coloured rows — restrained branding that still identifies the artefact as a First Light document.
+
+### New shared primitives — `modules/pdf.mjs`
+- **`PDF_PALETTE`**: brand hexes (`deep / forest / moss / gold / bark / muted / stone / white` + `spColours` map). Extracted from the inline `C` object that had lived inside `exportSeasonSummary` in `diary.js`. First time the palette is genuinely shared rather than duplicated.
+- **`setPdfFill / setPdfStroke / setPdfText`**: thin hex→rgb wrappers so callers can say `setPdfFill(doc, PDF_PALETTE.gold)` instead of hand-rolling `setFillColor(200, 168, 75)` every time.
+- **`drawRichHeaderBand(doc, { pageW, title, eyebrow, subtitle, meta })`**: the full-width dark-green duotone band + gold underline + white title from Season Summary. Returns the y-coordinate below the band for easy chaining.
+- **`drawProfessionalHeader(doc, { pageW, title, subtitle, scope, eyebrow })`**: the new compliance-style header — 4pt moss rule across the top, gold eyebrow, black title, optional grey subtitle + scope lines. Returns y below the header.
+
+### Reference pass — Team Larder Book
+Swapped the first-pass "green accent bar + beige header + zebra + filled totals" treatment for the new `drawProfessionalHeader`. Also:
+- Stripped zebra striping (reading as decorative, not functional).
+- Table header now unfilled (default `drawTableHeader` path — just bold text + hairline rule).
+- Totals bar: thin-ruled frame (no fill) instead of beige block.
+- Signature block unchanged (already using `drawSignatureBlock`).
+- Page footer unchanged (already using `drawPdfFooter`).
+
+Result: Team Larder now reads like a formal larder book (think DEFRA food-business paperwork) with just enough First Light identity (the gold eyebrow + moss rule) that a dealer can tell where it came from. Pending Stage 2/3 propagation to the other three professional PDFs + full rich refresh on the stalker-facing set.
+
+### Tests
+- `tests/pdf.test.mjs`: +5 tests. Palette exports, hex→rgb wrappers, `drawProfessionalHeader` (full form + minimal form), `drawRichHeaderBand` two-tone fill + returned height. All 59 tests pass.
+
+### Files
+- `modules/pdf.mjs` — new exports (`PDF_PALETTE`, `setPdfFill/Stroke/Text`, `drawRichHeaderBand`, `drawProfessionalHeader`); Team Larder uses the new professional header.
+- `tests/pdf.test.mjs` — expanded import list + 5 new tests.
+- `sw.js` — cache v7.60.
+
+---
+
+## 2026-04-16 — PDF visual refresh (reference pass on Team Larder Book)
+
+With the Team Larder SQL bug fixed, user asked "maybe you can improve the design of pdfs?" Open prompt — rather than guess a scope I proposed a scope/direction/consistency form; user skipped it so proceeded with a default: *polish the two visible copy bugs across both larders + apply a restrained visual refresh to the Team Larder Book as a reference PDF*. Stop there and get user buy-in before propagating to the other four PDFs (Solo Larder, Single Entry, Game Dealer, Consignment, Simple Diary, Season Summary).
+
+### Bug fixes (both larders)
+- **"1 carcasses"** → **"1 carcass"**. Fixed via new `plural(n, singular, pluralForm)` helper. Default rule is suffix-'s' for regular words ("shooter" → "shooters"); `carcass` needs the explicit plural because suffix-'s' yields the mangled `carcasss`.
+- **"Total weight: 0 kg"** when no row carries a weight → **"Total weight: —"**. New `formatTotalKg(weights[])` helper: sums parseable floats, tracks `contributed` count, emits em-dash when nothing contributed. Prevents the misleading "I weighed them all and they came to zero" reading.
+
+### Visual refresh (Team Larder Book only this pass)
+- **Branded header**: thin dark moss-green accent bar (10mm tall, 3mm wide) to the left of the title. Reads as "from First Light" without being loud.
+- **Table header row**: `drawTableHeader` got an optional `{ filled: true }` variant that paints a light-beige (RGB 233/228/215) band behind the header text. Existing callers unchanged (default `filled=false` keeps the old thin-rule look for non-refreshed PDFs).
+- **Zebra rows**: very light warm-grey (247/245/239) fill on alternate rows — barely visible on-screen, aids eye-tracking across the 12-column landscape layout, still prints clean on B&W.
+- **Totals bar**: framed block (beige fill + grey border) replacing the inline "Total carcasses: N · Total weight: X kg" line. Clearer hierarchy, harder to miss when skimming a multi-page book.
+- **Signature block**: new `drawSignatureBlock` helper draws actual thin rules (0.5pt grey) instead of typewriter `___________`. Aligns better and doesn't shift when fonts change width.
+- **Page footer**: new `drawPdfFooter` helper. Drawn retrospectively after the body is fully laid out (using `doc.getNumberOfPages()` + `doc.setPage(p)` loop) so each page carries `Produced by First Light Cull Diary — firstlightdeer.co.uk` on the left and `Page N of M` on the right. Consistent footer positioning regardless of body length.
+
+Header rule softened from 200-grey to 180-grey so the new accent bar and filled header row have more visual weight than the hairline.
+
+### Files
+- **`modules/pdf.mjs`**:
+  - New exports: `plural`, `formatTotalKg`, `drawPdfFooter`, `drawSignatureBlock`.
+  - `drawTableHeader` extended with `filled` flag; unconditional `setTextColor(0)` reset guards against leftover grey text state from a preceding call.
+  - `buildSyndicateLarderBookPDF` rewritten to use the new helpers. Line-count delta +~35 but most of it is comments documenting the visual choices.
+  - `buildLarderBookPDF` (solo): minimal — just switched the inline `'carcasses'` concat to `plural(n, 'carcass', 'carcasses')`. Visual refresh deferred until user approves the Team Larder direction.
+- **`tests/pdf.test.mjs`**:
+  - `FakeDoc` stub extended with `setPage`, `getNumberOfPages`, `getTextWidth`, plus `pageCount` / `currentPage` state tracking for the retrospective footer loop.
+  - `drawTableHeader` test updated: now expects `setTextColor(0)` + `setDrawColor(180)` instead of the old `setDrawColor(200)` shape. +1 new test for the `filled=true` band.
+  - +5 new tests for `plural` (singular / plural / default-rule) and `formatTotalKg` (sum / empty / all-null / mixed).
+- **`sw.js`** — `SW_VERSION` bumped `7.58` → `7.59`.
+
+### Deliberately deferred
+- Propagating the refresh to Solo Larder, Single Entry Cull Record, Game Dealer Declaration, Consignment Declaration, Simple Diary, Season Summary. Want user to eyeball the Team Larder first — if the direction's wrong, rewinding one PDF is cheap; rewinding six is expensive.
+- Column order / "Location / Ground" header ambiguity. Flipping the displayed order would match stalker intuition but conflicts with the DB column naming; rename is out of scope.
+- Cover pages for long documents. Would add polish for 20+ page books but none of this user's exports currently run that long — premature.
+
+Test run: **143/143 pass** (was 139; +4). No lint regressions.
+
+---
+
+## 2026-04-16 — Team Larder Book: real bug found & fixed (explicit-attribution filter missing)
+
+Follow-up to the previous "visible scope line" entry. After the user re-tagged every 2025-26 entry to either **West Acre** or **Castle Acre** (via `cull_entries.syndicate_id`), the Castle Acre team larder was still pulling West Acre's entries. That made this a genuine filter bug — not a data coincidence — in the Team Larder RPC.
+
+Root cause: `scripts/syndicate-manager-larder.sql` (shipped 2026-04-16 v1) filters only by member roster + ground_filter. The **other three** syndicate RPCs (`syndicate_season_summary`, `syndicate_member_actuals_for_manager`, aggregate) already had `WHERE e.syndicate_id = p_syndicate_id` added by the 2026-04-15 explicit-attribution migration — the larder RPC was added the following day and never got the same treatment. With no ground filter (Castle Acre) and the explicit filter missing, every entry by any active member landed in Castle Acre's book regardless of what syndicate the shooter tagged it to.
+
+- **`scripts/syndicate-manager-larder.sql`** — v2:
+  - Added `WHERE e.syndicate_id = p_syndicate_id` as the first WHERE clause.
+  - Kept `ground_filter` match as belt-and-braces: if a manager has a ground_filter set, rows that carry the syndicate_id but a mismatching ground are still excluded — protects against an entry with a mistyped syndicate_id leaking in.
+  - Header comment rewritten to document the attribution model and add a v1→v2 changelog.
+- **`scripts/supabase-verify-drift.sql`** — drift check **3i** added:
+  - `weak_function` assertion on `syndicate_member_larder_for_manager(uuid,text)` requires `pg_get_functiondef` to contain `'e.syndicate_id = p_syndicate_id'`. Mirrors the existing assertions on the other three syndicate RPCs. This regression class can't silently ship again.
+- **`scripts/SUPABASE-RECORD.md`** — new **Pending** section (run the v2 SQL in Supabase SQL Editor) + changelog entry documenting v1 superseded.
+
+**No client-side change was needed** (the client passes `p_syndicate_id` correctly; the scope line added earlier today already tells the manager what filter was applied). The SW bump from 7.57 → 7.58 is purely to flush stale Team Larder PDFs a user may have cached today under v1 — the cached PDFs aren't in the SW cache but a copy-paste safety bump is cheap.
+
+- **`sw.js`** — `SW_VERSION` bumped `7.57` → `7.58`.
+
+Test run: **139/139 pass** (no client-side change — existing scope-line tests from the previous entry still cover the PDF builder). No lint regressions. SQL deploy **confirmed** 2026-04-16: user ran both the v2 RPC SQL and `supabase-verify-drift.sql` → no rows returned on either. See `scripts/SUPABASE-RECORD.md` changelog.
+
+---
+
+## 2026-04-16 — Team Larder Book: visible scope line (no SQL change)
+
+User reported "whatever syndicate I pick, Team Larder generates the same entries, only the title changes." We thought this was a filter leak in the RPC but after a diagnostic run through `syndicate_member_larder_for_manager` with both syndicates' IDs (pasted results in chat):
+
+| Syndicate | ground_filter | Rows | Distinct `e.ground` |
+|---|---|---|---|
+| Castle Acre | NULL | 5 | `["Woodland Block"]` |
+| West Acre | `"Woodland Block"` | 5 | `["Woodland Block"]` |
+
+The RPC **is** filtering correctly — every single one of this user's 2025-26 entries legitimately has `ground = "Woodland Block"` in the DB, so both syndicates return identical rows (Castle Acre via no-filter, West Acre via matched-filter). The "Thetford Forest" / "Castle Acre" text that appears mid-row lives in `location_name`, not `ground` — the builder renders `location_name + " / " + ground`, which made "Thetford Forest / Woodland Block" look like a ground mismatch when it actually documents a Woodland Block compartment of the Thetford Forest permission.
+
+No SQL change. The fix is **making the applied scope visible on the PDF** so identical output across two syndicates doesn't read as a bug.
+
+- **`modules/pdf.mjs`** — `buildSyndicateLarderBookPDF`:
+  - New third header line below the existing subtitle (9pt grey):
+    - Ground filter set: `Ground filter: "Woodland Block"  ·  1 contributing shooter`
+    - Ground filter absent: `Ground filter: none (all grounds)  ·  N contributing shooter(s)`
+  - Distinct shooter count computed from `rows[].culledBy` (trimmed; empty → `(unnamed)`). Singular / plural handled.
+  - Table `y` start nudged 32 → 37 to make room. Column layout unchanged.
+  - `syndicate.ground_filter` read defensively — the solo-user path (no syndicate object) isn't affected since this builder is syndicate-only.
+- **`tests/pdf.test.mjs`** — helper + 2 new assertions:
+  - `installJsPdfStub()` now attaches a `spy.lastDoc` handle so tests can inspect `doc.calls` without changing builders' return surface. Backwards-compatible (existing tests still use `restore()`; the spy is attached on the returned restore fn).
+  - New: `buildSyndicateLarderBookPDF: scope line shows "Ground filter" when set` — asserts the quoted filter + singular shooter phrase for N=1.
+  - New: `buildSyndicateLarderBookPDF: scope line reads "none (all grounds)" when no filter` — asserts the no-filter copy + plural for N=2.
+- **`sw.js`** — `SW_VERSION` bumped `7.56` → `7.57`.
+
+Deliberately **not** changed (considered and rejected):
+- Column order / header "Location / Ground". Flipping to "Ground / Location" would have matched common stalker intuition (big → small) but the underlying DB columns are named the opposite way: `ground` is the small, reusable, filterable tag (the thing syndicates filter on), `location_name` is the free-text larger-scope description. Renaming DB columns is out of scope; the new scope line already clarifies which field drove the filter.
+- Hiding the "Team Larder Book" button for single-member syndicates. The export is still a valid audit artefact even for a single-person syndicate (the shooter column clarifies that) — the confusion was purely about *why* two syndicates returned the same rows, not about whether the export makes sense.
+- Plumbing the ground filter through to the single-user Larder Book too. Solo path uses the unified Export modal which doesn't surface its ground filter on the PDF either — leave both the same for now. Can be added as a consistency pass later if needed.
+
+Test run: **139/139 pass** (was 137; +2). No lint regressions.
+
+---
+
+## 2026-04-16 — Larder Book: Season + Ground picker (cross-season access)
+
+User smoke-testing C1 flagged that the **Larder Book** button generated a PDF for whatever `currentSeason` happened to be selected in the global selector, with no way to pick a different season. Concrete broken flow: on 1st August 2026 the app rolls to the 2026-27 season; a dealer calls asking for the 2025-26 Larder Book; the user has to switch the global season selector back just to export, then switch forward again. That's the same gap the CSV / PDF exports had before today's Season + Ground modal rebuild.
+
+Fix: route Larder Book through the **same unified export modal** (`openExportModal` → `doExportFiltered`) as a third format (`'larder'`) alongside `'csv'` and `'pdf'`. One modal, three outputs, same filter controls (Season dropdown + Ground dropdown + live count).
+
+- **`diary.html`** — Larder Book button:
+  - Was: `data-fl-action="export-larder-book"` (dispatched straight to `exportLarderBookPDF()` using global `filteredEntries` + `currentSeason`).
+  - Now: `data-fl-action="open-export" data-export-fmt="larder"` — opens the unified picker.
+- **`diary.js`** — `openExportModal(format)`:
+  - Copy table extended: `{ csv: 'Export CSV / Generate CSV', pdf: 'Export PDF / Generate PDF', larder: 'Export Larder Book / Generate Larder Book' }`. Everything else (pool fetch, Season/Ground selects, live count, empty-state toasts) is shared code.
+- **`diary.js`** — `doExportFiltered()`:
+  - New `larder` branch calls `buildLarderBookPDF({ filteredEntries: entries, user: currentUser, season: isAllSeasons ? '__all__' : season })` with the modal's filtered result, then toasts on success. Builder's own "Left on hill" exclusion still runs, so an all-"Left on hill" selection gets a specific "No larder entries in this selection (all 'Left on hill')" toast rather than a misleading "no entries" (the modal count was non-zero).
+  - The `__all__` season marker is already understood by `buildLarderBookPDF` — it renders a date-range scope line instead of the season-label line (pinned by existing test `buildLarderBookPDF: "__all__" season renders date-range scope line`).
+- **`diary.js`** — dead code removal:
+  - Deleted the `case 'export-larder-book'` dispatcher branch (no button emits it any more).
+  - Deleted the `exportLarderBookPDF()` zero-arg shim — the unified modal now calls `buildLarderBookPDF` directly. Left a short comment marker where it used to live so future readers understand the rename. Net `-12 lines`.
+- **`sw.js`** — `SW_VERSION` bumped `7.55` → `7.56`.
+
+Behaviour change worth flagging: the Larder Book used to honour the **list view's** filters (species filter, search term, ground filter chosen in the list header). It now honours only the **modal's** Season + Ground selection, independent of list state. This is intentional and more predictable — the output is a pure function of the two dropdown values — but if a user relied on "filter the list to Roe, click Larder Book, get a Roe-only larder book" that flow is gone. It's not a documented contract; the list-filter leak was arguably a bug.
+
+Test run: **137/137 pass** (no new tests needed — the larder builder contract was already pinned). No lint regressions.
+
+---
+
+## 2026-04-16 — Trained Hunter declaration: same-day-safe filename + long-form date
+
+Consistency follow-up to the B2 smoke test. `buildGameDealerDeclarationPDF` was showing `Date of kill: 2026-04-11` (raw ISO) and producing filenames like `declaration-fallow-2026-04-11.pdf` which would collide for two same-day kills of the same species. Both per-carcass artefacts (cull record + dealer declaration) now follow the same naming scheme so they cluster alphabetically in the downloads folder.
+
+- **`modules/pdf.mjs`** — `buildGameDealerDeclarationPDF`:
+  - `Date of kill` row renders as "Sat 11 Apr 2026 (2026-04-11)" via `fmtEntryDateLong`. ISO retained in parens for audit cross-reference.
+  - `Time` row passed through `fmtEntryTimeShort` (strips seconds, zero-pads single-digit hours).
+  - Filename now `declaration-<species-slug>-<YYYY-MM-DD>[-<HHMM>].pdf`. Back-compat: no time on the entry → no `-HHMM` suffix, matching the legacy shape.
+- **`tests/pdf.test.mjs`** — +1 assertion:
+  - Existing filename test (species + date, no time) kept unchanged — proves the back-compat path.
+  - New: entry with `time: '01:31:00'` produces `declaration-fallow-2026-04-11-0131.pdf`.
+- **`sw.js`** — `SW_VERSION` bumped `7.54` → `7.55`.
+
+Deliberately **not** changed:
+- Email suppression: `accountEmail` is only rendered when `hunterName` is missing (the existing fallback). Sohaib's profile has a name → email correctly suppressed. Confirmed during B2 smoke test.
+- Always-rendered empty field labels (e.g. `Tag / carcass number:` when blank). Kept because audit artefacts benefit from showing every field was considered (vs silently dropped). Different from the single-entry "cull record" which skips blanks.
+
+Test run: **137/137 pass** (was 136; +1). No lint regressions.
+
+---
+
+## 2026-04-16 — Single-entry PDF: same-day-safe filename + long-form date
+
+User smoke-testing B1 noticed `cull-record-2026-04-11.pdf` — two entries on the same date collide in the downloads folder (browser just appends "(1)"). Also the `Date:` row rendered the raw ISO string, unlike the list PDF which now uses the long form.
+
+- **`modules/pdf.mjs`** — `buildSingleEntryPDF`:
+  - Filename now `cull-record-<species-slug>-<YYYY-MM-DD>[-<HHMM>].pdf`:
+    - Species slugged (same convention as the game-dealer declaration, so both per-carcass artefacts cluster together alphabetically in the downloads folder).
+    - Time appended as `HHMM` (no colons — Windows-safe) when the entry has one. Same-day, same-species entries with different times now produce distinct filenames.
+    - Missing species falls back to the slug `entry`. Missing time simply drops the `-HHMM` suffix.
+  - `Date:` row now renders "Sat 11 Apr 2026 (2026-04-11)" — long form for humans, ISO in parens for database cross-reference. Falls back to the raw value if the date is unparseable.
+  - `Time:` row now passed through `fmtEntryTimeShort` so `14:30:00` reads as `14:30` (matches the list PDF).
+- **`tests/pdf.test.mjs`** — replaced the single old filename test with 3 more targeted ones:
+  - species-slug-only filename when no time.
+  - species + time-suffix filename for the same-day case ("Roe Deer" + `06:05:00` → `cull-record-roe-deer-2025-10-15-0605.pdf`).
+  - empty species falls back to the `entry` slug.
+- **`sw.js`** — `SW_VERSION` bumped `7.53` → `7.54`.
+
+No change to the set of fields rendered in the body — the builder already handles Location / Age class / Weight / Tag / Calibre / Distance / Placement / Destination / Notes, silently skipping any that are blank. The user's screenshot showed only Date/Time/Ground because those were the only populated fields on that particular entry; confirmed with them.
+
+Test run: **136/136 pass** (was 134; +2 net: 3 new filename tests replacing 1 old).
+
+---
+
+## 2026-04-16 — Simple diary PDF: year on date + richer per-entry fields
+
+User exported the 2024-25 season from the new filter modal and correctly called out two issues with the resulting PDF:
+
+1. Date read "Wed 29 Jan" with no year — ambiguous in multi-season exports.
+2. Only 7 fields rendered per entry; `time`, `ground`, `age_class`, `shooter` were silently dropped even when populated (which is why that one 2024-25 entry looked empty in the PDF despite having data).
+
+Both fixed in `buildSimpleDiaryPDF` + two new pure helpers:
+
+- **`modules/pdf.mjs`**
+  - New `fmtEntryDateLong(d)` — e.g. `"Wed 29 Jan 2025"`. Sibling of `fmtEntryDateShort`, added rather than extending the existing helper so call sites / tests stay pinned.
+  - New `fmtEntryTimeShort(t)` — accepts `HH:MM` / `HH:MM:SS` / zero-pads single-digit hours, returns `""` for null/junk so it composes cleanly with `if (timeStr) …`.
+  - `buildSimpleDiaryPDF`:
+    - Title line now reads `"N. Species (Sex) · Wed 29 Jan 2025 · 14:30"` — date long form + optional time. Changed joiner from `" - "` to `" · "` to match the meta row below.
+    - Meta row grew to 10 possible fields in a logical order: **Ground, Location, Weight, Tag, Calibre, Distance, Placement, Age, Shooter, Destination**. Shooter is only shown when not the default "Self" (case-insensitive), so the common case stays clean.
+    - Meta row now `splitTextToSize`-wrapped to page width — with 10 potential fields it could otherwise overflow. Each wrapped line also respects the page-break guard.
+- **`tests/pdf.test.mjs`** +7 assertions:
+  - `fmtEntryDateLong`: year appended for two different years, null/empty fallthrough, unparseable input falls through to raw.
+  - `fmtEntryTimeShort`: strips seconds, passes `HH:MM` through, zero-pads `H:MM`, returns `""` for null/undefined/""/junk.
+- **`sw.js`** — `SW_VERSION` bumped `7.52` → `7.53`.
+
+No visual change for entries that only had `species / sex / date` — they just pick up the year now. Entries with any of ground / time / age / non-Self shooter populated will show noticeably more.
+
+Test run: **134/134 pass** (was 127; +7 for the two new helpers). No lint regressions.
+
+---
+
+## 2026-04-16 — Export PDF/CSV modal: unified season+ground filter (matches Summary)
+
+Follow-up to the per-season-tiles attempt earlier today. User pointed out that the tile list would get ugly fast for anyone with 10 seasons of data (12-row modal, Cancel pushed off-screen) and — more importantly — we already have a clean pattern for this: the **Season Summary** modal uses a `<select>` for Season (+ "All Seasons") and another for Ground, with a live "Entries matching selection" preview. Export should just mirror that so users get the same UX in both flows.
+
+Rebuilt the Export modal from scratch to be a mirror of the Summary modal:
+
+- **`diary.html`** — `#export-modal` now uses `di-modal-sheet-body` chrome with:
+  - `<select id="export-season-sel">` (All Seasons + every season the user has entries in, newest first; `currentSeason` preselected).
+  - `<select id="export-ground-sel">` (All grounds + every ground referenced in any entry).
+  - Live `#export-match-count` preview.
+  - One primary button (`di-btn-pdf` gradient) whose label swaps between "Generate PDF" and "Generate CSV" based on `exportFormat`.
+  - Cancel (`di-btn-outline`).
+  - Dispatcher wires the primary button to a new `do-export-filtered` action.
+- **`diary.js`**
+  - New `exportEntryPool` state variable (sibling of `summaryEntryPool`, kept separate to avoid cross-modal state bleed).
+  - `openExportModal(format)` rewritten to mirror `openSummaryFilter`: loads the full cross-season pool from Supabase (fetches `date, time, species, sex, location_name, ground, weight_kg, tag_number, calibre, distance_m, shot_placement, age_class, shooter, destination, notes` so both CSV and PDF paths have everything they need); falls back to `allEntries.slice()` on offline / fetch error with an informative toast. Populates both selects, runs `updateCount()` on change, then shows the modal.
+  - `closeExportModal` nulls out `exportEntryPool` on close (matches the Summary pattern's pool-hygiene).
+  - New `getFilteredExportEntries()` — identical filter semantics to `getFilteredSummaryEntries` so "2025-26 Season + Woodland A" means the same thing in both modals.
+  - New `doExportFiltered()`:
+    - Builds a human-readable `titleLabel` for the PDF title / toast ("All Seasons" / `seasonLabel(s)`, with " — <Ground>" appended when ground is filtered).
+    - Builds a `filenameSlug` for the filename: `cull-diary-<seasonSlug>[-<groundSlug>].{pdf,csv}`. E.g. `cull-diary-2025-26-woodland-a.pdf` or `cull-diary-all-seasons-woodland-a.pdf`.
+    - Delegates to `exportCSVData(entries, filenameSlug)` or `exportPDFData(entries, titleLabel, seasonOrNull, filenameSlug)`.
+  - New `exportFilenameSlug(str)` helper (local to diary.js) — lowercase, alnum-or-hyphen, trimmed. Used only in the export-modal path.
+  - `exportPDFData(entries, label, seasonOverride, filenameSlug)` grew a 4th arg — forwarded into `buildSimpleDiaryPDF` so ground-filtered exports get the right filename without touching the legacy all-seasons-vs-season branching. Back-compat default: `filenameSlug || null`.
+  - Removed the short-lived `EXPORT_SEASON_TILE_ICON_SVG` / `renderExportSeasonTile()` / `doExport(scope, seasonKey)` code from earlier today — superseded.
+  - Removed references to `#export-season-list`, `#export-season-lbl`, `#export-season-count`, `#export-all-count`, `data-export-scope`, `data-export-season` — all gone.
+- **`modules/pdf.mjs`** — `buildSimpleDiaryPDF({ entries, label, season, filenameSlug })` accepts an optional `filenameSlug` that overrides the `label === 'All Seasons' ? 'cull-diary-all-seasons' : 'cull-diary-' + season` branching. When present, filename is simply `cull-diary-<filenameSlug>.pdf`. Pure addition; existing call sites continue to work unchanged (they pass no slug).
+- **`tests/pdf.test.mjs`** — +1 assertion pinning the new branch:
+  - `filenameSlug` wins over a single-season `season` value.
+  - `filenameSlug` wins over the `label === 'All Seasons'` branch.
+  - Empty-string `filenameSlug` is treated as falsy and falls through to the legacy branch.
+- **`sw.js`** — `SW_VERSION` bumped `7.51` → `7.52`.
+
+Test run: **127/127 pass** (was 126; one new test for the `filenameSlug` override).
+
+Syndicate export modal (`openSyndicateExportModal`) already had its own independent season dropdown — untouched. Summary modal — untouched (stays the reference implementation).
+
+---
+
 ## 2026-04-16 — `<option>` dark-mode legibility fix (tiny CSS)
 
 Spotted during the Commit I–K smoke-test prep: when the user opened the season selector, the currently-highlighted/selected option rendered near-invisibly (dark grey on dark grey) because Windows Chrome/Edge render the open `<select>` dropdown with OS-shell colours and ignore the `<select>`'s `color` inheritance for the option rows.

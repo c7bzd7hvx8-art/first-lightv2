@@ -21,9 +21,19 @@ import assert from 'node:assert/strict';
 import {
   userProfileDisplayName,
   fmtEntryDateShort,
+  fmtEntryDateLong,
+  fmtEntryTimeShort,
   hasValue,
   syndicateFileSlug,
   drawTableHeader,
+  plural,
+  formatTotalKg,
+  PDF_PALETTE,
+  setPdfFill,
+  setPdfStroke,
+  setPdfText,
+  drawRichHeaderBand,
+  drawProfessionalHeader,
   buildSimpleDiaryPDF,
   buildSingleEntryPDF,
   buildLarderBookPDF,
@@ -79,6 +89,44 @@ test('fmtEntryDateShort falls back to the raw string for unparseable input', () 
   assert.equal(fmtEntryDateShort('garbage'), 'garbage');
 });
 
+// ── fmtEntryDateLong ───────────────────────────────────────────────────────
+test('fmtEntryDateLong appends the 4-digit year so multi-season exports disambiguate', () => {
+  assert.equal(fmtEntryDateLong('2025-10-15'), 'Wed 15 Oct 2025');
+  assert.equal(fmtEntryDateLong('2024-01-29'), 'Mon 29 Jan 2024');
+});
+
+test('fmtEntryDateLong returns "" for empty / null (matches short form)', () => {
+  assert.equal(fmtEntryDateLong(''), '');
+  assert.equal(fmtEntryDateLong(null), '');
+  assert.equal(fmtEntryDateLong(undefined), '');
+});
+
+test('fmtEntryDateLong falls back to the raw string for unparseable input', () => {
+  assert.equal(fmtEntryDateLong('garbage'), 'garbage');
+});
+
+// ── fmtEntryTimeShort ──────────────────────────────────────────────────────
+test('fmtEntryTimeShort strips seconds from an HH:MM:SS value', () => {
+  assert.equal(fmtEntryTimeShort('14:30:00'), '14:30');
+  assert.equal(fmtEntryTimeShort('06:05:59'), '06:05');
+});
+
+test('fmtEntryTimeShort passes HH:MM through unchanged', () => {
+  assert.equal(fmtEntryTimeShort('14:30'), '14:30');
+});
+
+test('fmtEntryTimeShort zero-pads single-digit hours', () => {
+  assert.equal(fmtEntryTimeShort('6:05'), '06:05');
+  assert.equal(fmtEntryTimeShort('6:05:30'), '06:05');
+});
+
+test('fmtEntryTimeShort returns "" for empty / null / junk input', () => {
+  assert.equal(fmtEntryTimeShort(''), '');
+  assert.equal(fmtEntryTimeShort(null), '');
+  assert.equal(fmtEntryTimeShort(undefined), '');
+  assert.equal(fmtEntryTimeShort('not a time'), '');
+});
+
 // ── hasValue ───────────────────────────────────────────────────────────────
 test('hasValue treats null / undefined / "" as missing', () => {
   assert.equal(hasValue(null), false);
@@ -97,34 +145,57 @@ test('hasValue treats 0, false, and non-empty strings as present', () => {
 function installJsPdfStub() {
   // Minimal jspdf surface used by the builders. A4 landscape size (842×595)
   // is hard-coded into `internal` so the builders' page-break maths works.
+  // `spy.lastDoc` gives tests access to the most-recently-constructed FakeDoc
+  // so they can assert on `calls` (e.g. to pin scope-line text without
+  // changing the builders' return surface).
+  const spy = { lastDoc: null };
   class FakeDoc {
     constructor(orientation) {
       this.saved = null;
       this.calls = [];
-      const isLandscape = orientation === 'landscape';
+      this.pageCount = 1;
+      this.currentPage = 1;
+      // Builders pass `{ unit, format, orientation }`. Previously the stub
+      // inspected the first arg as a raw string which never matched — here we
+      // read the real field so A4-landscape reports (Season Summary) get the
+      // right pageSize. Both paths tolerated for safety.
+      const opts = (orientation && typeof orientation === 'object') ? orientation : { orientation };
+      const isLandscape = opts.orientation === 'landscape';
+      const self = this;
       this.internal = {
         pageSize: {
           getWidth:  () => isLandscape ? 842 : 595,
           getHeight: () => isLandscape ? 595 : 842,
         },
+        // Legacy jspdf surface — some builders use `doc.internal.getNumberOfPages()`
+        // instead of the top-level method.
+        getNumberOfPages: () => self.pageCount,
       };
+      spy.lastDoc = this;
     }
-    setFontSize(n)     { this.calls.push(['setFontSize', n]); }
-    setFont(...a)      { this.calls.push(['setFont', ...a]); }
-    setDrawColor(...a) { this.calls.push(['setDrawColor', ...a]); }
-    setTextColor(...a) { this.calls.push(['setTextColor', ...a]); }
-    setLineWidth(n)    { this.calls.push(['setLineWidth', n]); }
-    setFillColor(...a) { this.calls.push(['setFillColor', ...a]); }
-    text(...a)         { this.calls.push(['text', ...a]); }
-    line(...a)         { this.calls.push(['line', ...a]); }
-    rect(...a)         { this.calls.push(['rect', ...a]); }
-    addPage()          { this.calls.push(['addPage']); }
-    splitTextToSize(s) { return [String(s)]; }
-    save(name)         { this.saved = name; }
+    setFontSize(n)      { this.calls.push(['setFontSize', n]); }
+    setFont(...a)       { this.calls.push(['setFont', ...a]); }
+    setDrawColor(...a)  { this.calls.push(['setDrawColor', ...a]); }
+    setTextColor(...a)  { this.calls.push(['setTextColor', ...a]); }
+    setLineWidth(n)     { this.calls.push(['setLineWidth', n]); }
+    setFillColor(...a)  { this.calls.push(['setFillColor', ...a]); }
+    text(...a)          { this.calls.push(['text', ...a]); }
+    line(...a)          { this.calls.push(['line', ...a]); }
+    rect(...a)          { this.calls.push(['rect', ...a]); }
+    circle(...a)        { this.calls.push(['circle', ...a]); }
+    roundedRect(...a)   { this.calls.push(['roundedRect', ...a]); }
+    addPage()           { this.pageCount += 1; this.currentPage = this.pageCount; this.calls.push(['addPage']); }
+    setPage(n)          { this.currentPage = n; this.calls.push(['setPage', n]); }
+    getNumberOfPages()  { return this.pageCount; }
+    getTextWidth(s)     { return String(s).length * 1.8; }
+    splitTextToSize(s)  { return [String(s)]; }
+    save(name)          { this.saved = name; }
   }
   const prev = globalThis.window;
   globalThis.window = { jspdf: { jsPDF: FakeDoc } };
-  return () => { globalThis.window = prev; };
+  const restore = () => { globalThis.window = prev; };
+  restore.spy = spy;
+  return restore;
 }
 
 test('buildSimpleDiaryPDF returns null for empty entries (no save called)', () => {
@@ -156,6 +227,22 @@ test('buildSimpleDiaryPDF uses "all-seasons" filename when label is "All Seasons
   } finally { restore(); }
 });
 
+test('buildSimpleDiaryPDF: filenameSlug overrides the default season/all-seasons branching', () => {
+  const restore = installJsPdfStub();
+  try {
+    const entries = [{ species: 'Roe', sex: 'male', date: '2025-10-15' }];
+    // Single season + ground: slug wins over the per-season default.
+    const a = buildSimpleDiaryPDF({ entries, label: '2025-26 Season — Woodland A', season: '2025-26', filenameSlug: '2025-26-woodland-a' });
+    assert.equal(a.filename, 'cull-diary-2025-26-woodland-a.pdf');
+    // All seasons + ground: slug wins over the "All Seasons" label branch.
+    const b = buildSimpleDiaryPDF({ entries, label: 'All Seasons — Woodland A', season: '2025-26', filenameSlug: 'all-seasons-woodland-a' });
+    assert.equal(b.filename, 'cull-diary-all-seasons-woodland-a.pdf');
+    // Empty-string slug (falsy) → falls back to legacy branch.
+    const c = buildSimpleDiaryPDF({ entries, label: 'All Seasons', season: '2025-26', filenameSlug: '' });
+    assert.equal(c.filename, 'cull-diary-all-seasons.pdf');
+  } finally { restore(); }
+});
+
 test('buildSingleEntryPDF returns null for missing entry', () => {
   const restore = installJsPdfStub();
   try {
@@ -164,13 +251,35 @@ test('buildSingleEntryPDF returns null for missing entry', () => {
   } finally { restore(); }
 });
 
-test('buildSingleEntryPDF encodes the entry date into the filename', () => {
+test('buildSingleEntryPDF encodes species + date into the filename', () => {
   const restore = installJsPdfStub();
   try {
     const res = buildSingleEntryPDF({
-      entry: { species: 'Roe', sex: 'male', date: '2025-10-15' }
+      entry: { species: 'Roe Deer', sex: 'male', date: '2025-10-15' }
     });
-    assert.equal(res.filename, 'cull-record-2025-10-15.pdf');
+    // Species slugged + date. No time suffix when the entry has no time.
+    assert.equal(res.filename, 'cull-record-roe-deer-2025-10-15.pdf');
+  } finally { restore(); }
+});
+
+test('buildSingleEntryPDF appends HHMM when a time is present (same-day disambiguation)', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSingleEntryPDF({
+      entry: { species: 'Roe Deer', sex: 'male', date: '2025-10-15', time: '06:05:00' }
+    });
+    // Colons stripped so the filename is filesystem-safe on Windows too.
+    assert.equal(res.filename, 'cull-record-roe-deer-2025-10-15-0605.pdf');
+  } finally { restore(); }
+});
+
+test('buildSingleEntryPDF falls back to "entry" slug when species is missing', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSingleEntryPDF({
+      entry: { species: '', sex: 'male', date: '2025-10-15' }
+    });
+    assert.equal(res.filename, 'cull-record-entry-2025-10-15.pdf');
   } finally { restore(); }
 });
 
@@ -208,11 +317,14 @@ test('syndicateFileSlug: empty / punctuation-only falls back to "syndicate"', ()
 test('drawTableHeader draws headers at colX, advances y by 6, draws underline', () => {
   const calls = [];
   const fakeDoc = {
-    setFontSize: (n) => calls.push(['setFontSize', n]),
-    setFont:     (...a) => calls.push(['setFont', ...a]),
-    text:        (...a) => calls.push(['text', ...a]),
+    setFontSize:  (n) => calls.push(['setFontSize', n]),
+    setFont:      (...a) => calls.push(['setFont', ...a]),
+    setTextColor: (...a) => calls.push(['setTextColor', ...a]),
+    setFillColor: (...a) => calls.push(['setFillColor', ...a]),
     setDrawColor: (n) => calls.push(['setDrawColor', n]),
-    line:        (...a) => calls.push(['line', ...a]),
+    rect:         (...a) => calls.push(['rect', ...a]),
+    text:         (...a) => calls.push(['text', ...a]),
+    line:         (...a) => calls.push(['line', ...a]),
   };
   const newY = drawTableHeader(fakeDoc, {
     headers: ['A', 'B', 'C'],
@@ -221,16 +333,173 @@ test('drawTableHeader draws headers at colX, advances y by 6, draws underline', 
     pageW:   297,
   });
   assert.equal(newY, 36);
-  // First/last meaningful calls: bold on, 3 text draws, bold off, hairline.
+  // Default (filled=false) path: no fill/rect, bold on, reset textColor, 3
+  // text draws, bold off, hairline at 180 grey (softer than the old 200).
   assert.deepEqual(calls[0], ['setFontSize', 8]);
   assert.deepEqual(calls[1], ['setFont', undefined, 'bold']);
-  assert.deepEqual(calls[2], ['text', 'A', 14, 30]);
-  assert.deepEqual(calls[3], ['text', 'B', 50, 30]);
-  assert.deepEqual(calls[4], ['text', 'C', 100, 30]);
-  assert.deepEqual(calls[5], ['setFont', undefined, 'normal']);
-  assert.deepEqual(calls[6], ['setDrawColor', 200]);
+  assert.deepEqual(calls[2], ['setTextColor', 0]);
+  assert.deepEqual(calls[3], ['text', 'A', 14, 30]);
+  assert.deepEqual(calls[4], ['text', 'B', 50, 30]);
+  assert.deepEqual(calls[5], ['text', 'C', 100, 30]);
+  assert.deepEqual(calls[6], ['setFont', undefined, 'normal']);
+  assert.deepEqual(calls[7], ['setDrawColor', 180]);
   // Underline sits 3pt above the new y (at y-3) and runs margin to margin.
-  assert.deepEqual(calls[7], ['line', 14, 33, 283, 33]);
+  assert.deepEqual(calls[8], ['line', 14, 33, 283, 33]);
+});
+
+// ── plural / formatTotalKg ─────────────────────────────────────────────────
+test('plural: singular form when n===1, pluralForm when n!==1', () => {
+  assert.equal(plural(1, 'carcass', 'carcasses'), '1 carcass');
+  assert.equal(plural(0, 'carcass', 'carcasses'), '0 carcasses');
+  assert.equal(plural(2, 'carcass', 'carcasses'), '2 carcasses');
+  // Default suffix-'s' rule for words that inflect regularly.
+  assert.equal(plural(1, 'shooter'), '1 shooter');
+  assert.equal(plural(3, 'shooter'), '3 shooters');
+});
+
+test('formatTotalKg: sums numeric weights to 1dp with " kg" suffix', () => {
+  assert.equal(formatTotalKg([1.2, 3.4, 5.6]), '10.2 kg');
+  assert.equal(formatTotalKg([48, 56]), '104 kg');
+  // Trailing zeros after the decimal point — Math.round gives integer for whole kg.
+  assert.equal(formatTotalKg([10.04, 5.01]), '15.1 kg');
+});
+
+test('formatTotalKg: "—" when no row contributes a numeric weight', () => {
+  assert.equal(formatTotalKg([]), '—');
+  assert.equal(formatTotalKg([null, undefined, '']), '—');
+  assert.equal(formatTotalKg([null, 'not a number', NaN]), '—');
+  // One numeric entry survives the filter.
+  assert.equal(formatTotalKg([null, '', 7.5, undefined]), '7.5 kg');
+});
+
+test('drawTableHeader (filled) paints a beige band behind the header row', () => {
+  const calls = [];
+  const fakeDoc = {
+    setFontSize:  (n) => calls.push(['setFontSize', n]),
+    setFont:      (...a) => calls.push(['setFont', ...a]),
+    setTextColor: (...a) => calls.push(['setTextColor', ...a]),
+    setFillColor: (...a) => calls.push(['setFillColor', ...a]),
+    setDrawColor: (n) => calls.push(['setDrawColor', n]),
+    rect:         (...a) => calls.push(['rect', ...a]),
+    text:         (...a) => calls.push(['text', ...a]),
+    line:         (...a) => calls.push(['line', ...a]),
+  };
+  drawTableHeader(fakeDoc, {
+    headers: ['A'],
+    colX:    [14],
+    y:       30,
+    pageW:   297,
+    filled:  true,
+  });
+  // First two calls are the fill setup + rect; rect dims are (14, y-4, w-28, 6.5).
+  assert.deepEqual(calls[0], ['setFillColor', 233, 228, 215]);
+  assert.deepEqual(calls[1], ['rect', 14, 26, 269, 6.5, 'F']);
+});
+
+// ── Shared palette & header primitives ─────────────────────────────────────
+test('PDF_PALETTE: exposes brand hexes used by both rich and professional headers', () => {
+  assert.equal(PDF_PALETTE.deep,   '#0e2a08');
+  assert.equal(PDF_PALETTE.forest, '#1a3a0e');
+  assert.equal(PDF_PALETTE.moss,   '#5a7a30');
+  assert.equal(PDF_PALETTE.gold,   '#c8a84b');
+  assert.equal(PDF_PALETTE.bark,   '#3d2b1f');
+  assert.equal(typeof PDF_PALETTE.spColours, 'object');
+});
+
+test('setPdfFill / setPdfStroke / setPdfText: parse hex → rgb tuple', () => {
+  const calls = [];
+  const fakeDoc = {
+    setFillColor: (...a) => calls.push(['fill', ...a]),
+    setDrawColor: (...a) => calls.push(['stroke', ...a]),
+    setTextColor: (...a) => calls.push(['text', ...a]),
+  };
+  setPdfFill(fakeDoc,   '#c8a84b'); // gold
+  setPdfStroke(fakeDoc, '#0e2a08'); // deep
+  setPdfText(fakeDoc,   '#ffffff'); // white
+  assert.deepEqual(calls[0], ['fill',   200, 168, 75]);
+  assert.deepEqual(calls[1], ['stroke',  14,  42,  8]);
+  assert.deepEqual(calls[2], ['text',   255, 255, 255]);
+});
+
+test('drawProfessionalHeader: thin moss rule + gold eyebrow + black title + optional subtitle/scope', () => {
+  const calls = [];
+  const fakeDoc = {
+    setFillColor: (...a) => calls.push(['setFillColor', ...a]),
+    setDrawColor: (...a) => calls.push(['setDrawColor', ...a]),
+    setTextColor: (...a) => calls.push(['setTextColor', ...a]),
+    setFontSize:  (n)    => calls.push(['setFontSize', n]),
+    setFont:      (...a) => calls.push(['setFont', ...a]),
+    rect:         (...a) => calls.push(['rect', ...a]),
+    text:         (...a) => calls.push(['text', ...a]),
+  };
+  const y = drawProfessionalHeader(fakeDoc, {
+    pageW: 297,
+    title: 'Larder Book',
+    subtitle: 'West Acre · Season 2025-2026 · 3 carcasses',
+    scope: 'Ground filter: "Woodland Block"  ·  1 contributing shooter',
+  });
+
+  // Rule at the top is a filled moss rect spanning the full page width.
+  const hasMossRule = calls.some(c =>
+    c[0] === 'rect' && c[1] === 0 && c[2] === 0 && c[3] === 297 && c[4] === 4 && c[5] === 'F'
+  );
+  assert.ok(hasMossRule, 'expected top moss-green accent rule');
+
+  // Title + subtitle + scope must all have been drawn via doc.text.
+  const drawn = calls.filter(c => c[0] === 'text').map(c => c[1]);
+  assert.ok(drawn.some(s => String(s).includes('Larder Book')),             'title missing');
+  assert.ok(drawn.some(s => String(s).includes('West Acre')),                'subtitle missing');
+  assert.ok(drawn.some(s => String(s).includes('Ground filter:')),           'scope missing');
+
+  // Returned y is below the header region.
+  assert.ok(y > 30, 'returned y should be below header region (got ' + y + ')');
+});
+
+test('drawProfessionalHeader: renders without subtitle/scope when omitted', () => {
+  const calls = [];
+  const fakeDoc = {
+    setFillColor: () => {}, setDrawColor: () => {}, setTextColor: () => {},
+    setFontSize:  () => {}, setFont: () => {}, rect: () => {},
+    text:         (...a) => calls.push(String(a[0])),
+  };
+  drawProfessionalHeader(fakeDoc, { pageW: 297, title: 'Larder Book' });
+  assert.ok(calls.some(s => s.includes('Larder Book')));
+  assert.equal(calls.length, 2); // eyebrow + title only (no subtitle, no scope)
+});
+
+test('drawRichHeaderBand: two-tone fill + gold underline + returns band height', () => {
+  const calls = [];
+  const fakeDoc = {
+    setFillColor: (...a) => calls.push(['fill', ...a]),
+    setDrawColor: (...a) => calls.push(['stroke', ...a]),
+    setTextColor: (...a) => calls.push(['text', ...a]),
+    setFontSize:  (n)    => calls.push(['size', n]),
+    setFont:      (...a) => calls.push(['font', ...a]),
+    setLineWidth: (n)    => calls.push(['lw', n]),
+    rect:         (...a) => calls.push(['rect', ...a]),
+    line:         (...a) => calls.push(['line', ...a]),
+    text:         (...a) => calls.push(['T', ...a]),
+  };
+  const h = drawRichHeaderBand(fakeDoc, {
+    pageW: 842,
+    title: '2025-26 Season Report',
+    subtitle: 'Ground: Woodland Block',
+    meta: { url: 'firstlightdeer.co.uk', generated: '17 Apr 2026 - 14:22' },
+  });
+  // Band draws two fill rects (deep full-width, then forest left-half).
+  const rects = calls.filter(c => c[0] === 'rect');
+  assert.equal(rects.length, 2);
+  assert.equal(rects[0][3], 842); // full-width first
+  assert.equal(rects[1][3], 421); // left-half second
+  // Gold underline is a line call.
+  assert.ok(calls.some(c => c[0] === 'line'));
+  // Title + subtitle + generated-on stamp all drawn.
+  const drawn = calls.filter(c => c[0] === 'T').map(c => c[1]);
+  assert.ok(drawn.some(s => String(s).includes('Season Report')));
+  assert.ok(drawn.some(s => String(s).includes('Woodland Block')));
+  assert.ok(drawn.some(s => String(s).includes('Generated 17 Apr 2026')));
+  // Returned height is a sane positive.
+  assert.ok(h > 50 && h < 120, 'band height out of range: ' + h);
 });
 
 // ── buildLarderBookPDF (Commit J) ──────────────────────────────────────────
@@ -367,6 +636,51 @@ test('buildSyndicateLarderBookPDF: falls back to "Syndicate" when name missing',
   } finally { restore(); }
 });
 
+test('buildSyndicateLarderBookPDF: scope line shows "Ground filter" when set', () => {
+  const restore = installJsPdfStub();
+  try {
+    buildSyndicateLarderBookPDF({
+      syndicate: { name: 'West Acre', ground_filter: 'Woodland Block' },
+      season: '2025-26',
+      rows: [
+        { species: 'Roe', sex: 'male', date: '2025-10-15', culledBy: 'Sohaib', ground: 'Woodland Block' },
+      ],
+    });
+    const texts = restore.spy.lastDoc.calls
+      .filter(c => c[0] === 'text')
+      .map(c => String(c[1]));
+    // One of the text calls must contain the quoted ground filter and the
+    // "1 contributing shooter" phrase (singular — single shooter).
+    const scope = texts.find(t => t.includes('Ground filter:') && t.includes('contributing shooter'));
+    assert.ok(scope, 'scope line missing; got: ' + JSON.stringify(texts));
+    assert.ok(scope.includes('"Woodland Block"'));
+    assert.ok(scope.includes('1 contributing shooter'));
+    assert.ok(!scope.includes('shooters')); // strictly singular for N=1
+  } finally { restore(); }
+});
+
+test('buildSyndicateLarderBookPDF: scope line reads "none (all grounds)" when no filter', () => {
+  const restore = installJsPdfStub();
+  try {
+    buildSyndicateLarderBookPDF({
+      syndicate: { name: 'Castle Acre' /* no ground_filter */ },
+      season: '2025-26',
+      rows: [
+        { species: 'Roe',  sex: 'male',   date: '2025-10-15', culledBy: 'Alice' },
+        { species: 'Fall', sex: 'female', date: '2025-10-16', culledBy: 'Bob' },
+      ],
+    });
+    const texts = restore.spy.lastDoc.calls
+      .filter(c => c[0] === 'text')
+      .map(c => String(c[1]));
+    const scope = texts.find(t => t.includes('Ground filter:'));
+    assert.ok(scope, 'scope line missing; got: ' + JSON.stringify(texts));
+    assert.ok(scope.includes('none (all grounds)'));
+    // 2 distinct shooters → pluralised.
+    assert.ok(scope.includes('2 contributing shooters'));
+  } finally { restore(); }
+});
+
 // ── buildGameDealerDeclarationPDF (Commit K) ────────────────────────────────
 test('buildGameDealerDeclarationPDF: null for missing entry', () => {
   const restore = installJsPdfStub();
@@ -383,7 +697,19 @@ test('buildGameDealerDeclarationPDF: filename includes lowercased species + date
       entry: { species: 'Red Deer', sex: 'male', date: '2025-10-15' },
       user: null,
     });
+    // No time on the entry → no HHMM suffix (back-compat with the legacy shape).
     assert.equal(res.filename, 'declaration-red-deer-2025-10-15.pdf');
+  } finally { restore(); }
+});
+
+test('buildGameDealerDeclarationPDF: appends HHMM when entry has a time (same-day disambiguation)', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildGameDealerDeclarationPDF({
+      entry: { species: 'Fallow', sex: 'male', date: '2026-04-11', time: '01:31:00' },
+      user: null,
+    });
+    assert.equal(res.filename, 'declaration-fallow-2026-04-11-0131.pdf');
   } finally { restore(); }
 });
 
@@ -488,5 +814,206 @@ test('buildConsignmentDealerDeclarationPDF: does NOT mutate the caller\'s array'
     const snapshot = input.map(e => e.date);
     buildConsignmentDealerDeclarationPDF({ entries: input, user: null });
     assert.deepEqual(input.map(e => e.date), snapshot, 'input order must be preserved');
+  } finally { restore(); }
+});
+
+// ── buildSeasonSummaryPDF / buildSyndicateSeasonSummaryPDF (Commit L) ──────
+// These are the two biggest PDF builders (Season Summary ≈ 378 lines, the
+// Syndicate variant ≈ 295). The tests below lock down the public contract
+// — empty-guard, filename shape, return shape — rather than the pixel-level
+// output, because the renderer is ~400 draw-calls deep and unit-testing at
+// that granularity would just mirror the implementation.
+
+import {
+  buildSeasonSummaryPDF,
+  buildSyndicateSeasonSummaryPDF,
+} from '../modules/pdf.mjs';
+
+const PLAN_SPECIES_FIXTURE = [
+  { name: 'Red Deer', mLbl: 'Stag', fLbl: 'Hind' },
+  { name: 'Roe Deer', mLbl: 'Buck', fLbl: 'Doe'  },
+  { name: 'Fallow',   mLbl: 'Buck', fLbl: 'Doe'  },
+];
+
+test('buildSeasonSummaryPDF returns null for empty entries (no save)', () => {
+  const restore = installJsPdfStub();
+  try {
+    const a = buildSeasonSummaryPDF({ entries: [],    season: '2025-26', planSpecies: PLAN_SPECIES_FIXTURE, cullTargets: {} });
+    const b = buildSeasonSummaryPDF({ entries: null,  season: '2025-26', planSpecies: PLAN_SPECIES_FIXTURE, cullTargets: {} });
+    assert.equal(a, null);
+    assert.equal(b, null);
+  } finally { restore(); }
+});
+
+test('buildSeasonSummaryPDF returns { filename, count } with season-coded filename', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSeasonSummaryPDF({
+      entries: [
+        { species: 'Roe Deer', sex: 'm', date: '2025-10-20', weight_kg: 18, tag_number: 'T1' },
+        { species: 'Roe Deer', sex: 'f', date: '2025-10-21', weight_kg: 15, tag_number: 'T2' },
+      ],
+      season: '2025-26',
+      cullTargets: {},
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    assert.deepEqual(res, { filename: 'first-light-season-2025-26.pdf', count: 2 });
+    assert.equal(restore.spy.lastDoc.saved, 'first-light-season-2025-26.pdf');
+  } finally { restore(); }
+});
+
+test('buildSeasonSummaryPDF uses "all-seasons" filename when label override is set', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSeasonSummaryPDF({
+      entries: [{ species: 'Roe Deer', sex: 'm', date: '2025-10-20' }],
+      season: '2025-26',
+      seasonLabelOverride: 'All Seasons',
+      cullTargets: {},
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    assert.equal(res.filename, 'first-light-all-seasons.pdf');
+    // Cull Plan section must be suppressed for "All Seasons" — no "Cull Plan vs Actual"
+    // text should have been drawn.
+    const planText = restore.spy.lastDoc.calls.filter(
+      c => c[0] === 'text' && typeof c[1] === 'string' && c[1].toUpperCase().includes('CULL PLAN')
+    );
+    assert.equal(planText.length, 0, 'Cull Plan section must be omitted for All Seasons');
+  } finally { restore(); }
+});
+
+test('buildSeasonSummaryPDF slugs the ground override into the filename', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSeasonSummaryPDF({
+      entries: [{ species: 'Roe Deer', sex: 'm', date: '2025-10-20' }],
+      season: '2025-26',
+      groundOverride: 'Woodland Block',
+      cullTargets: {},
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    assert.equal(res.filename, 'first-light-season-2025-26-woodland-block.pdf');
+  } finally { restore(); }
+});
+
+test('buildSeasonSummaryPDF ignores "All Grounds" override (no filename suffix)', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSeasonSummaryPDF({
+      entries: [{ species: 'Roe Deer', sex: 'm', date: '2025-10-20' }],
+      season: '2025-26',
+      groundOverride: 'All Grounds',
+      cullTargets: {},
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    assert.equal(res.filename, 'first-light-season-2025-26.pdf');
+  } finally { restore(); }
+});
+
+test('buildSeasonSummaryPDF renders the cull-plan progress bar when targets present', () => {
+  const restore = installJsPdfStub();
+  try {
+    buildSeasonSummaryPDF({
+      entries: [
+        { species: 'Roe Deer', sex: 'm', date: '2025-10-20' },
+        { species: 'Roe Deer', sex: 'm', date: '2025-10-21' },
+      ],
+      season: '2025-26',
+      cullTargets: { 'Roe Deer-m': 5 },
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    const planHeaderDrawn = restore.spy.lastDoc.calls.some(
+      c => c[0] === 'text' && c[1] === 'CULL PLAN VS ACTUAL'
+    );
+    assert.equal(planHeaderDrawn, true, 'Cull Plan vs Actual section must render');
+    // The "2/5" progress label should appear somewhere.
+    const progressLabel = restore.spy.lastDoc.calls.some(
+      c => c[0] === 'text' && typeof c[1] === 'string' && c[1] === '2/5'
+    );
+    assert.equal(progressLabel, true, 'Progress label "actual/target" must render');
+  } finally { restore(); }
+});
+
+test('buildSyndicateSeasonSummaryPDF returns { filename, count } with syndicate slug', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSyndicateSeasonSummaryPDF({
+      syndicate: { name: 'Castle Acre' },
+      season: '2025-26',
+      entries: [
+        { cull_date: '2025-10-20', species: 'Roe Deer', sex: 'm', culledBy: 'Alice' },
+        { cull_date: '2025-10-21', species: 'Roe Deer', sex: 'f', culledBy: 'Bob'   },
+      ],
+      summaryRows: [],
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      planSpeciesMeta: (name) => ({ name, mLbl: 'Buck', fLbl: 'Doe' }),
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    assert.equal(res.count, 2);
+    assert.match(res.filename, /^syndicate-castle-acre-summary-2025-26\.pdf$/);
+    assert.equal(restore.spy.lastDoc.saved, res.filename);
+  } finally { restore(); }
+});
+
+test('buildSyndicateSeasonSummaryPDF renders "No culls recorded" for empty species set', () => {
+  const restore = installJsPdfStub();
+  try {
+    buildSyndicateSeasonSummaryPDF({
+      syndicate: { name: 'Empty Co' },
+      season: '2025-26',
+      entries: [],
+      summaryRows: [],
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      planSpeciesMeta: (name) => ({ name, mLbl: 'Buck', fLbl: 'Doe' }),
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    const emptyMsg = restore.spy.lastDoc.calls.some(
+      c => c[0] === 'text' && c[1] === 'No culls recorded for this season.'
+    );
+    assert.equal(emptyMsg, true);
+  } finally { restore(); }
+});
+
+test('buildSyndicateSeasonSummaryPDF renders cull plan from summaryRows target/actual', () => {
+  const restore = installJsPdfStub();
+  try {
+    buildSyndicateSeasonSummaryPDF({
+      syndicate: { name: 'Castle Acre' },
+      season: '2025-26',
+      entries: [{ cull_date: '2025-10-20', species: 'Roe Deer', sex: 'm', culledBy: 'Alice' }],
+      summaryRows: [{ species: 'Roe Deer', sex: 'm', target_total: '4', actual_total: '1' }],
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      planSpeciesMeta: (name) => ({ name, mLbl: 'Buck', fLbl: 'Doe' }),
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    const planHeaderDrawn = restore.spy.lastDoc.calls.some(
+      c => c[0] === 'text' && c[1] === 'CULL PLAN VS ACTUAL'
+    );
+    assert.equal(planHeaderDrawn, true);
+    const progressLabel = restore.spy.lastDoc.calls.some(
+      c => c[0] === 'text' && typeof c[1] === 'string' && c[1] === '1/4'
+    );
+    assert.equal(progressLabel, true);
+  } finally { restore(); }
+});
+
+test('buildSyndicateSeasonSummaryPDF tolerates a null syndicate name (filename safe)', () => {
+  const restore = installJsPdfStub();
+  try {
+    const res = buildSyndicateSeasonSummaryPDF({
+      syndicate: {},
+      season: '2025-26',
+      entries: [],
+      summaryRows: [],
+      planSpecies: PLAN_SPECIES_FIXTURE,
+      planSpeciesMeta: (name) => ({ name, mLbl: 'Buck', fLbl: 'Doe' }),
+      now: new Date('2025-10-22T10:00:00Z'),
+    });
+    assert.match(res.filename, /^syndicate-[a-z0-9-]+-summary-2025-26\.pdf$/);
   } finally { restore(); }
 });

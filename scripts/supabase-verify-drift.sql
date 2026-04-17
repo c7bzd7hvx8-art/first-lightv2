@@ -238,6 +238,34 @@ AND NOT EXISTS (
 
 UNION ALL
 
+-- 3i) Team Larder Book RPC must filter on explicit per-entry attribution.
+-- Without this, a no-ground-filter syndicate (e.g. individual-allocation)
+-- swallows entries a member tagged to a sibling syndicate. Regression was
+-- shipped 2026-04-16 and caught during syndicate C2 smoke test the same day;
+-- this assertion exists so it can never return silently.
+SELECT 'weak_function'::text,
+       'syndicate_member_larder_for_manager(uuid,text)'::text,
+       'Run scripts/syndicate-manager-larder.sql (v2 with e.syndicate_id filter)'::text
+WHERE EXISTS (
+  SELECT 1
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname = 'syndicate_member_larder_for_manager'::name
+    AND pg_get_function_identity_arguments(p.oid) = 'p_syndicate_id uuid, p_season text'
+)
+AND NOT EXISTS (
+  SELECT 1
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname = 'syndicate_member_larder_for_manager'::name
+    AND pg_get_function_identity_arguments(p.oid) = 'p_syndicate_id uuid, p_season text'
+    AND pg_get_functiondef(p.oid) ILIKE '%e.syndicate_id = p_syndicate_id%'
+)
+
+UNION ALL
+
 -- 4) Storage bucket for diary photos
 SELECT 'missing_storage_bucket'::text,
        'cull-photos'::text,
