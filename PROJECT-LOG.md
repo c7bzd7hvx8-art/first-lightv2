@@ -4,6 +4,20 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Privacy / Terms: simplify Contact sections to email only
+
+User screenshot of the privacy *Contact & data controller* section prompted: *"should be just the email?"* They're right — the `firstlightdeer.co.uk` line was redundant (it loops back to the same site the policy is hosted on), and anyone exercising a GDPR right or reporting an issue will use the email, not the website.
+
+- `privacy.html` Contact section: dropped the `firstlightdeer.co.uk` line; kept the `firstlightdeer@gmail.com` mailto.
+- `terms.html` Section 15 Contact: same — dropped "*· firstlightdeer.co.uk*", kept the email.
+- `sw.js`: `SW_VERSION` 7.71 → 7.72.
+
+The `firstlightdeer.co.uk` reference remains in Section 1 of `terms.html` ("*the First Light app … at firstlightdeer.co.uk*") because there it identifies the **scope** of the terms, not a contact route.
+
+Tests still 199/199.
+
+---
+
 ## 2026-04-17 — Terms: allow commercial stalking activity (sale of venison, declarations)
 
 User flagged a meaningful licensing gap after reading the new Terms of Use: *"it says that stalkers cannot use the app for commercial purposes, surely a deer manager will be using the records when making commercial transactions by selling venison to dealers and giving larder books/hunter declarations?"*
