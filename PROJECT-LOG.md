@@ -4,6 +4,35 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Launch-readiness blocker #6: client-side error logger
+
+Closing out the last open item on the pre-launch scorecard. Before shipping to the tight beta group we wanted a way to see what breaks in the wild without setting up a full crash-reporting stack — a single table of recent errors in the Supabase dashboard is plenty for the scale we're at.
+
+### What shipped
+
+- **New SQL:** `scripts/fl-app-errors-table.sql` — creates `public.app_errors` with one row per distinct client error. Columns: `id`, `created_at`, `user_id` (FK to `auth.users`, nullable for anon-auth-screen crashes), `app_version`, `url`, `user_agent`, `source` (`'error' | 'unhandledrejection' | 'manual'`), `message`, `stack`, `lineno`, `colno`, `extra jsonb`. Indexes on `created_at desc` and `user_id`.
+- **RLS model:** `enable row level security` on, one policy `app_errors_insert_anyone` that grants **insert** to `anon, authenticated` with `with check (true)`. No SELECT / UPDATE / DELETE policies exist, so the anon key cannot read back what it wrote. Rows are inspected via the Supabase dashboard (service_role). This keeps the table write-only from the client's perspective while still allowing error capture before sign-in.
+- **New module:** `modules/error-logger.mjs`. Public API: `installErrorLogger(sb, { appVersion, getUserId })` and `logErrorManually(err, extra)`. Wires `window.addEventListener('error', …)` and `('unhandledrejection', …)`. Dedupes identical errors within a 5-minute window (djb2 hash of `message` + first 200 chars of `stack`) and hard-caps at 25 rows per session. Truncates `message` (500), `stack` (4000), `url` (500), `user_agent` (300) so a single pathological error can't fill the table. Every failure path (auth lookup, `sb.from().insert()`, handler body) is wrapped in `try { … } catch { /* swallow */ }` — the logger must never recurse or be louder than the bug it reports.
+- **Tests:** `tests/error-logger.test.mjs` — 15 tests covering listener registration (exactly once, idempotent), error-event capture shape, unhandledrejection with both `Error` and primitive reasons, dedupe (positive + negative), the 25-row session cap, `getUserId` success + throwing paths, `sb.insert` throwing swallowed silently, message/stack/url clipping, `logErrorManually`, no-Supabase no-op, and the `_resetErrorLoggerForTests` hook. Uses `Object.defineProperty` to stomp Node 22's built-in `navigator` / `location` globals since they're non-writable by default.
+- **Wiring in `diary.js`:** new import + `FL_APP_VERSION = '7.73'` constant (kept in sync with `sw.js` `SW_VERSION` — documented convention). Install is called from the DOM-ready init path right after `initSupabase()` returns true, inside a `try/catch` so a broken logger can never block boot. `getUserId` closure reads the existing `currentUser` global so rows are attributed whenever the user is signed in.
+- **SW:** pre-cache list includes `./modules/error-logger.mjs`; `SW_VERSION` 7.72 → 7.73.
+- **Supabase pending:** `SUPABASE-RECORD.md` Pending now lists `fl-app-errors-table.sql` with full run instructions; the Changelog notes the file has shipped as source but the SQL hasn't run yet. I'll tick both off once the user pastes it into SQL Editor.
+
+### Not done
+
+- No in-dashboard "errors this week" panel — not worth building until we have rows to look at.
+- No manual `logErrorManually` calls added anywhere yet; that's a per-site decision and we can sprinkle them in if particular code paths need explicit tagging.
+
+Tests now 214/214 (199 previous + 15 new).
+
+---
+
+## 2026-04-17 — Retired launch blocker #5 (beta-gate decision)
+
+Scorecard item #5 was *"decide whether to gate the app behind a waitlist / invite code before letting general signups in"*. With the removal of all beta-language in yesterday's pass, that blocker is largely superseded — the app is already taking the "soft-open, open signup, don't promote" stance implied by that gate. No code change, logging for accuracy so the remaining-work list reflects reality: **#6 error logger was the only outstanding scorecard item**, and it landed in the entry above.
+
+---
+
 ## 2026-04-17 — Privacy / Terms: simplify Contact sections to email only
 
 User screenshot of the privacy *Contact & data controller* section prompted: *"should be just the email?"* They're right — the `firstlightdeer.co.uk` line was redundant (it loops back to the same site the policy is hosted on), and anyone exercising a GDPR right or reporting an issue will use the email, not the website.

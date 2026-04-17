@@ -16,6 +16,15 @@ import {
   SUPABASE_URL, SUPABASE_KEY, sb,
   initSupabase as flSupabaseInit
 } from './modules/supabase.mjs';
+import { installErrorLogger } from './modules/error-logger.mjs';
+
+// Tag that the client-side error logger writes into
+// public.app_errors.app_version. Bumped in lock-step with SW_VERSION in
+// sw.js — when the SW cache changes, so does this, so errors that come in
+// after a deploy can be filtered down to the new build. Hand-maintained
+// (two strings, but cheap to update; see PROJECT-LOG on the error-logger
+// rollout).
+const FL_APP_VERSION = '7.73';
 import {
   wxCodeLabel,
   windDirLabel,
@@ -1918,6 +1927,19 @@ flOnReady(function() {
   initStatsMoreSection();
   initPlanCollapse();
   if (!initSupabase()) return;
+
+  // Best-effort client-side error capture. Installs window.error +
+  // unhandledrejection listeners that insert one row per distinct error into
+  // public.app_errors (see modules/error-logger.mjs + scripts/fl-app-errors-
+  // table.sql). Dedupes identical errors within a 5-minute window and caps
+  // at 25 rows per session. Silent on failure; user is never shown anything.
+  try {
+    installErrorLogger(sb, {
+      appVersion: 'diary@' + FL_APP_VERSION,
+      getUserId: function() { return currentUser ? currentUser.id : null; },
+    });
+  } catch (_ignored) { /* swallow — logger itself must never crash boot */ }
+
   initDiaryFlUi();
   enhanceKeyboardClickables(document);
   if ('MutationObserver' in window) {
