@@ -4,6 +4,53 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-17 — Launch-readiness blocker #2: Terms of Use page
+
+Fourth launch-readiness blocker shipped — and the last of the pure-content pair. A new `terms.html` now sits alongside `privacy.html` and is linked from every place a user could be expected to look: the **auth consent checkbox** in the diary, the **diary footer** in the Stats/account view, the **marketing site footer** on `index.html`, and the **Copyright** section of the privacy policy. The file is pre-cached by the service worker so it's available offline immediately after the next SW update.
+
+### `terms.html` — contents
+15 sections with a short summary box at the top. The tone is "plain-language, UK-law-aware, explicitly a beta app":
+
+1. **About these terms** — names Sohaib Mengal as the operator, points to `firstlightdeer@gmail.com`.
+2. **What First Light is (and isn't)** — stalking aid, not legal/veterinary/food-hygiene advice; user-generated declarations (trained hunter, consignment, larder book) record the user's own declaration and are not issued or endorsed by us.
+3. **Beta software** — features may change, bugs possible, don't rely on the app as the *sole* record for legal needs; CSV/PDF export is the intended backup path.
+4. **Your account** — accurate info, keep password secure, lawful use, notify us of unauthorised access, delete anytime.
+5. **Acceptable use** — no unlawful use, no scraping/bulk download, no reverse engineering, no bots, no uploading content that infringes others' rights.
+6. **Your content** — user owns their records; we don't use it for training / ads / resale; syndicate sharing is explicitly called out.
+7. **Syndicate tools** — only invite people you have the right to share with; manager responsibilities; members-must-be-told-of-sharing.
+8. **Licence to use the app** — personal, non-exclusive, non-transferable, revocable; no resale / sublicence without permission; points at the privacy policy's copyright line.
+9. **Third-party services** — depends on Supabase/Mapbox/OS/etc.; users accept those providers' own terms; list maintained in the privacy policy.
+10. **No warranty** — "as is / as available"; no guarantee of accuracy for shooting times, weather, map tiles, species data, quiz answers, statistics, or generated documents.
+11. **Limitation of liability** — excludes indirect/consequential loss; reliance-on-information loss; third-party-service loss. Explicitly preserves non-excludable UK liabilities (death/personal injury, fraud).
+12. **Suspension and termination** — we can suspend/terminate; user can stop and delete any time.
+13. **Changes to these terms** — material changes flagged in the app's *What's new* notes; continued use = acceptance.
+14. **Governing law** — England and Wales; preserves consumer mandatory local-law protections for other UK nations.
+15. **Contact** — `firstlightdeer@gmail.com` + `firstlightdeer.co.uk`.
+
+Styling re-uses the `privacy.html` design system (same inline CSS block — dark background, gold-accented h2, ✓-bulleted lists). The summary-box is tinted gold rather than green to visually distinguish it from the privacy policy's cheerful "we store nothing" green.
+
+### Wiring
+
+- `diary.html` 48 (**auth consent**): "*I agree to the Privacy Policy*" → "*I agree to the Privacy Policy and Terms of Use*". Both links open in a new tab.
+- `diary.html` 680–684 (**diary footer**): new "*Terms of Use*" link between *Privacy Policy* and *← First Light*, with the existing `diary-footer-sep` separator style.
+- `index.html` 2739–2742 (**marketing footer**): new "*Terms of Use*" link between *Privacy Policy* and *Cull Diary*.
+- `privacy.html` Copyright section: existing "personal, non-commercial purposes" paragraph now ends with "*the full licence and acceptable-use terms are in the Terms of Use*".
+- `sw.js` 37–38: `terms.html` added to the `STATIC_CACHE` pre-cache list alongside `privacy.html`. `SW_VERSION` 7.68 → 7.69 so existing installs pick up the new auth-consent wording, the new footer link, and the new file.
+
+### Deliberate choices
+
+- **Two documents, not one.** The privacy policy remains data-focused; the Terms remain licence/use-focused. They cross-link where a user might want the other. Easier to maintain, easier to read.
+- **No click-to-accept dialog.** The existing auth-consent checkbox is kept as the single "*I agree*" surface — adding a modal would slow down sign-up for no material gain in a tight beta. The consent is now explicitly for both documents.
+- **No separate `deerschool.html` footer link**. Deer School is currently auth-less and its footer already lives inside `deerschool.html`; a follow-up pass can add Terms/Privacy links there if we decide to require them pre-launch (low priority — no user content is created in Deer School).
+- **Regulation (EC) 853/2004** already named in the trained-hunter declaration PDF; deliberately *not* repeated verbatim in the Terms to avoid implying endorsement — we point at it in the "What First Light is (and isn't)" context instead.
+
+### Launch-readiness progress
+**4 / 6 blockers shipped** (#1 feedback link, #2 Terms of Use, #3 privacy refresh, #4 FAB aria-label). Still open: **#5** beta-gate decision, **#6** lightweight error logger.
+
+Tests still 199/199; no JS module code touched.
+
+---
+
 ## 2026-04-17 — Launch-readiness blocker #3: privacy policy third-party refresh
 
 Third of the six launch blockers from the scorecard. `privacy.html` was last meaningfully updated before the diary grew its current map stack (Mapbox / OS / Esri / OSM tiles) and the time-zone fallback chain (timeapi.io / worldtimeapi.org), so the policy's third-party list was out of sync with the diary CSP (`diary.html` L5). It also had no named data controller, no data-retention statement, and no structured list of UK GDPR rights. All of that is now fixed in one pass; no code changes.
