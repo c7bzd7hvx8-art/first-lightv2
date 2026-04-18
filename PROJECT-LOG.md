@@ -4,6 +4,15 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-18 — Diary: iOS Safari “zooms in” on field focus
+
+**Not** caused by `body { max-width: 430px }` — that only centres the diary column. **Mobile Safari** (iPhone / iPad) automatically zooms the visual viewport when the user focuses an `<input>`, `<select>`, or `<textarea>` whose computed **font-size is below 16px**, so every tap on a 12–14px field felt like the page jumping back to a zoomed state.
+
+- `diary.css` — `html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }` to reduce incidental text scaling; `@media (max-width: 900px)` rule sets `font-size: 16px !important` on text-like inputs / all selects / textareas (excludes checkbox, radio, button, hidden, file, etc.).
+- `sw.js` — `SW_VERSION` `7.83 → 7.84` so PWA clients fetch the updated stylesheet.
+
+---
+
 ## 2026-04-18 — Content audit: FAC age, stale AHVLA ref, trained-hunter declaration wording
 
 Follow-up pass on user-facing content after the CSV-injection fix. I audited `privacy.html`, `terms.html`, species profiles / calibre tables in `index.html`, `diary-guide.html`, and the trained-hunter declaration PDFs. Seasons, calibre/energy minima (including the Scotland 2023 80-grain amendment and the Scotland Oct-2023 removal of male-deer close seasons), fallow palmation, roe delayed implantation, CWD tusks, and Mapbox/OS attribution all check out. Three real factual issues found and fixed.

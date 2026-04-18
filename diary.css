@@ -5,6 +5,11 @@
   --bark:#3d2b1f; --muted:#a0988a; --red:#c62828; --blue:#1a4aaa;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html{
+  /* Avoid iOS inflating small body text on orientation change; unrelated to pinch-zoom. */
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
 body{background:var(--deep);font-family:'DM Sans',sans-serif;color:var(--bark);max-width:430px;margin:0 auto;min-height:100vh;}
 .view{display:none;flex-direction:column;min-height:100vh;}
 .view.active{display:flex;}
@@ -1710,3 +1715,21 @@ body.in-select-mode .entries{padding-bottom:104px;}
 .di-lightbox-close:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 .di-lightbox-img{max-width:100%;max-height:90vh;object-fit:contain;border-radius:4px;}
 .di-modal-title-sans{font-size:15px;font-weight:700;color:var(--bark);margin-bottom:4px;}
+
+/* ── iOS / iPadOS Safari: automatic zoom on focused fields ───────────────────
+   Mobile Safari zooms the *visual viewport* when the user focuses an <input>,
+   <select>, or <textarea> whose computed font-size is below 16px (so the
+   caret and text meet a minimum legibility threshold). That feels like the
+   page "jumping" zoomed in again on every tap — it is **not** caused by
+   body max-width:430px (that only limits how wide the centred column is).
+
+   Fix: ensure interactive text fields are at least 16px on phone/tablet
+   widths. Use !important so this wins over scattered 12–14px rules above.
+   Exclude checkbox/radio/hidden/file/button types. */
+@media (max-width:900px){
+  input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="image"]),
+  select,
+  textarea{
+    font-size:16px !important;
+  }
+}
