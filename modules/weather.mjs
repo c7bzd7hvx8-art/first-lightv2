@@ -139,6 +139,18 @@ export function diaryLondonWallMs(dateStr, timeStr) {
   return new Date(dateStr + 'T' + (timeStr || '12:00') + ':00').getTime();
 }
 
+/**
+ * Read one Open-Meteo hourly sample. Arrays can exist while `arr[idx]` is
+ * `null` (missing sample); coercing `null` with math yields 0 — wrong for temp.
+ */
+export function openMeteoHourlyValue(arr, idx) {
+  if (!arr || idx < 0 || idx >= arr.length) return null;
+  var v = arr[idx];
+  if (v == null) return null;
+  if (typeof v === 'number' && !Number.isFinite(v)) return null;
+  return v;
+}
+
 // ── Weather at time of cull ───────────────────────────────────────────────
 // Fetches from Open-Meteo forecast API with past_days=7. The "last 7 days"
 // gate is enforced client-side because the forecast endpoint will happily
@@ -176,18 +188,24 @@ export async function fetchCullWeather(date, time, lat, lng) {
     if (idx === -1) return null;
 
     var h = d.hourly;
-    var windKmh = h.wind_speed_10m ? h.wind_speed_10m[idx] : null;
-    var gustKmh = h.windgusts_10m  ? h.windgusts_10m[idx]  : null;
+    var t = openMeteoHourlyValue(h.temperature_2m, idx);
+    var windKmh = openMeteoHourlyValue(h.wind_speed_10m, idx);
+    var gustKmh = openMeteoHourlyValue(h.windgusts_10m, idx);
+    var wd = openMeteoHourlyValue(h.wind_direction_10m, idx);
+    var p = openMeteoHourlyValue(h.surface_pressure, idx);
+    var c = openMeteoHourlyValue(h.cloud_cover, idx);
+    var wc = openMeteoHourlyValue(h.weather_code, idx);
+    var pr = openMeteoHourlyValue(h.precipitation, idx);
 
     return {
-      temp:       h.temperature_2m    ? Math.round(h.temperature_2m[idx] * 10) / 10 : null,
-      wind_mph:   windKmh !== null     ? Math.round(windKmh * 0.621)                : null,
-      gust_mph:   gustKmh !== null     ? Math.round(gustKmh * 0.621)                : null,
-      wind_dir:   h.wind_direction_10m ? h.wind_direction_10m[idx]                  : null,
-      pressure:   h.surface_pressure   ? Math.round(h.surface_pressure[idx])        : null,
-      cloud:      h.cloud_cover        ? h.cloud_cover[idx]                         : null,
-      code:       h.weather_code       ? h.weather_code[idx]                        : null,
-      precip_mm:  h.precipitation      ? h.precipitation[idx]                       : null,
+      temp:       t != null ? Math.round(t * 10) / 10 : null,
+      wind_mph:   windKmh != null ? Math.round(windKmh * 0.621) : null,
+      gust_mph:   gustKmh != null ? Math.round(gustKmh * 0.621) : null,
+      wind_dir:   wd,
+      pressure:   p != null ? Math.round(p) : null,
+      cloud:      c,
+      code:       wc,
+      precip_mm:  pr,
       fetched_at: diaryNow().toISOString()
     };
   } catch (e) {

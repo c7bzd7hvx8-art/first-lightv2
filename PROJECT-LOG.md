@@ -4,6 +4,22 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-18 — Audit sprint 1: error URL, weather nulls, stats guards, manifest privacy
+
+**A1** — `modules/error-logger.mjs`: **`safeUrlForLog()`** strips `#hash` and sensitive query params (`syndicate_invite`, OAuth tokens, etc.) before `app_errors.url`. **`tests/error-logger.test.mjs`** — new case.
+
+**A3** — `modules/weather.mjs`: **`openMeteoHourlyValue()`** so missing Open-Meteo hourly slots stay **`null`** (not coerced to **0**). **`tests/weather.test.mjs`**.
+
+**A7** — `modules/stats.mjs`: **`if (!card \|\| !chart) return`** for shooter, destination, age; calibre/distance blocks wrapped when DOM missing. **`esc(sp)`** on age “By species” header (audit C5).
+
+**B7** — `manifest.json`, `manifest-diary.json`: **`privacy_policy`** → `…/privacy.html`.
+
+**A6** (ops): Mapbox **`pk`** token URL restrictions — **Mapbox dashboard**, not code.
+
+- `sw.js` `8.14 → 8.15`; `betav2/` + `beta_v2/` rebuilt.
+
+---
+
 ## 2026-04-18 — Git: snapshot before audit remediation
 
 Commit **`c65ff35`** on **`main`** — backup point before Claude audit fixes; branch **`backup/pre-audit-2026-04-18`** at the same commit. Pushed to **`origin`**. (`betav2.zip` left untracked — local artefact.)

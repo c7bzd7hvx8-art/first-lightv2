@@ -242,6 +242,8 @@ export function aggregateTimeOfDayStats(entries) {
 export function buildShooterStats(entries) {
   var card  = document.getElementById('shooter-card');
   var chart = document.getElementById('shooter-chart');
+  if (!card || !chart) return;
+
   var agg = aggregateShooterStats(entries);
 
   if (agg.isAllSelf) { card.style.display = 'none'; return; }
@@ -268,6 +270,8 @@ export function buildShooterStats(entries) {
 export function buildDestinationStats(entries) {
   var card  = document.getElementById('destination-card');
   var chart = document.getElementById('destination-chart');
+  if (!card || !chart) return;
+
   var agg = aggregateDestinationStats(entries);
 
   if (agg.sortedNames.length === 0) { card.style.display = 'none'; return; }
@@ -349,6 +353,7 @@ export function buildCalibreDistanceStats(entries) {
   var calChart = document.getElementById('calibre-chart');
   var calEntries = entries.filter(function(e){ return e.calibre; });
 
+  if (calCard && calChart) {
   if (calEntries.length === 0) {
     calCard.style.display = 'none';
   } else {
@@ -381,12 +386,14 @@ export function buildCalibreDistanceStats(entries) {
     });
     calChart.innerHTML = html;
   }
+  }
 
   // ── Distance chart ──
   var distCard = document.getElementById('distance-card');
   var distChart = document.getElementById('distance-chart');
   var distEntries = entries.filter(function(e){ return e.distance_m && e.distance_m > 0; });
 
+  if (distCard && distChart) {
   if (distEntries.length === 0) {
     distCard.style.display = 'none';
   } else {
@@ -458,6 +465,7 @@ export function buildCalibreDistanceStats(entries) {
 
     distChart.innerHTML = html;
   }
+  }
 }
 
 // ── buildAgeStats ─────────────────────────────────────────────────────────
@@ -473,6 +481,8 @@ export function buildCalibreDistanceStats(entries) {
 export function buildAgeStats(entries) {
   var card  = document.getElementById('age-card');
   var chart = document.getElementById('age-chart');
+  if (!card || !chart) return;
+
   var aged  = entries.filter(function(e){ return e.age_class; });
 
   if (aged.length === 0) { card.style.display = 'none'; return; }
@@ -539,7 +549,7 @@ export function buildAgeStats(entries) {
       var clr = SP_COLORS_D[sp] || '#5a7a30';
 
       html += '<div class="age-sp-section">';
-      html += '<div class="age-sp-hdr"><div class="age-sp-dot" style="background:'+clr+';"></div><div class="age-sp-nm">'+sp+'</div></div>';
+      html += '<div class="age-sp-hdr"><div class="age-sp-dot" style="background:'+clr+';"></div><div class="age-sp-nm">'+esc(sp)+'</div></div>';
       AGE_CLASSES.forEach(function(ac, i) {
         var cnt = spCounts[ac];
         if (!cnt) return;

@@ -242,6 +242,39 @@ test('sb.insert throwing is swallowed and does not recurse', async () => {
   } finally { w.restore(); }
 });
 
+test('url omits hash and sensitive query params (audit: recovery / invite tokens)', async () => {
+  _resetErrorLoggerForTests();
+  const listeners = { error: [], unhandledrejection: [] };
+  const fakeWindow = {
+    addEventListener(type, fn) {
+      if (listeners[type]) listeners[type].push(fn);
+    },
+    removeEventListener() {},
+  };
+  const restoreWin = defineStub('window', fakeWindow);
+  const restoreLoc = defineStub('location', {
+    href: 'https://example.test/app?syndicate_invite=SECRET&foo=1#access_token=ATOK&refresh_token=RTOK',
+    pathname: '/app',
+  });
+  const restoreNav = defineStub('navigator', { userAgent: 'T' });
+  try {
+    const sb = new FakeSupabase();
+    installErrorLogger(sb, {});
+    listeners.error[0]({ error: new Error('san-url') });
+    await flush();
+    assert.equal(sb.rows.length, 1);
+    assert.equal(
+      sb.rows[0].row.url,
+      'https://example.test/app?foo=1',
+      'hash and sensitive params stripped; harmless foo= kept'
+    );
+  } finally {
+    restoreNav();
+    restoreLoc();
+    restoreWin();
+  }
+});
+
 test('long messages / stacks / urls are clipped', async () => {
   _resetErrorLoggerForTests();
   const w = installWindowStub();

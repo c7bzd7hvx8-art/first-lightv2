@@ -56,6 +56,28 @@ function clip(s, n) {
   return s.length > n ? s.slice(0, n) : s;
 }
 
+/**
+ * Strip hash and sensitive query params before logging — recovery flows put
+ * #access_token / #refresh_token in the hash; invites use ?syndicate_invite=.
+ */
+function safeUrlForLog() {
+  if (typeof location === 'undefined' || !location.href) return null;
+  try {
+    const u = new URL(location.href);
+    u.hash = '';
+    const strip = [
+      'syndicate_invite', 'access_token', 'refresh_token', 'token', 'code',
+      'type', 'provider_token', 'error', 'error_description',
+    ];
+    strip.forEach(function (p) {
+      u.searchParams.delete(p);
+    });
+    return u.toString();
+  } catch (_) {
+    return typeof location.pathname === 'string' ? location.pathname : null;
+  }
+}
+
 // djb2 hash, plenty for 5-minute dedupe buckets.
 function hashStr(s) {
   let h = 5381;
@@ -100,7 +122,7 @@ async function sendError(payload) {
   const row = {
     user_id:     uid || null,
     app_version: appVersion || null,
-    url:         clip(typeof location !== 'undefined' ? location.href : null, MAX_URL),
+    url:         clip(safeUrlForLog(), MAX_URL),
     user_agent:  clip(typeof navigator !== 'undefined' ? navigator.userAgent : null, MAX_USER_AGENT),
     source:      payload.source || null,
     message:     clip(payload.message, MAX_MESSAGE),

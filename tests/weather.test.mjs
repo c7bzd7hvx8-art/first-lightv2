@@ -21,8 +21,25 @@ import {
   wxCodeLabel,
   windDirLabel,
   findOpenMeteoHourlyIndex,
-  diaryLondonWallMs
+  diaryLondonWallMs,
+  openMeteoHourlyValue
 } from '../modules/weather.mjs';
+
+// ── openMeteoHourlyValue (null slot must not become 0) ────────────────────
+test('openMeteoHourlyValue returns null for missing array slot', () => {
+  const arr = [1.0, null, 3.0];
+  assert.equal(openMeteoHourlyValue(arr, 1), null);
+});
+
+test('openMeteoHourlyValue allows numeric 0 (valid WMO / cloud / precip)', () => {
+  assert.equal(openMeteoHourlyValue([0], 0), 0);
+  assert.equal(openMeteoHourlyValue([0.0], 0), 0);
+});
+
+test('openMeteoHourlyValue out of range → null', () => {
+  assert.equal(openMeteoHourlyValue([1], 99), null);
+  assert.equal(openMeteoHourlyValue(null, 0), null);
+});
 
 // ── wxCodeLabel ────────────────────────────────────────────────────────────
 test('wxCodeLabel(0) → Clear (CLR)', () => {
