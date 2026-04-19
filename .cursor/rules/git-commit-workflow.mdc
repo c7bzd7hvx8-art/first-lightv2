@@ -1,0 +1,25 @@
+---
+description: After code/doc changes, commit and push to origin with a clear message; never commit secrets
+alwaysApply: true
+---
+
+# Git — commit at end of feature work
+
+## When this applies
+
+If the task **changed files** in this repo (code, config, `PROJECT-LOG.md`, `sw.js`, `betav2/`, etc.), finish with a **git commit** for that scoped work. If the task was **read-only** (explain, search, no edits), do **not** commit.
+
+## Steps (repository root)
+
+1. **Log first:** If **tracked paths** changed (`project-log.mdc`), `PROJECT-LOG.md` must already be updated in the same change set.
+2. **Stage** only what belongs to this piece of work: `git add` relevant paths (not unrelated or accidental files).
+3. **Commit** with a short **imperative** subject line, e.g. `Fix list sort for All seasons`, `Add syndicate manager demote`, `Bump sw cache after diary export tweak`. One logical change per commit when possible.
+4. **Push** so GitHub holds a backup: `git push origin HEAD` (or `git push origin <current-branch>`). If push fails (auth, network, no remote), still **commit locally** and tell the user push failed with the reason.
+
+## Never commit
+
+API keys, `service_role` tokens, DB passwords, or contents of `.env` / secret files. If something sensitive appeared in the working tree, remove it from the commit before proceeding.
+
+## If `git` cannot run here
+
+Sandbox or missing PATH: do **not** skip documenting what changed. Give the user **exact** commands to run locally (`cd` to repo root, then `git status`, `git add …`, `git commit -m "…"`, `git push`).

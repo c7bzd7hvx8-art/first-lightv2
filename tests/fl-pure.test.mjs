@@ -45,8 +45,8 @@ test('ABNORMALITY_LABEL_BY_CODE covers every option', () => {
   ABNORMALITY_OPTIONS.forEach((o) => {
     assert.equal(ABNORMALITY_LABEL_BY_CODE[o.code], o.label);
   });
-  // Sanity: 12 options matches the chip grid layout in diary.css.
-  assert.equal(ABNORMALITY_OPTIONS.length, 12);
+  // Sanity: option count matches the chip grid in diary (2-column flex grid).
+  assert.equal(ABNORMALITY_OPTIONS.length, 16);
 });
 
 // ── seasonLabel ────────────────────────────────────────────────────────────

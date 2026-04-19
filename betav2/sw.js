@@ -5,7 +5,7 @@
 // the cache strings (`v7.34`) because they were three separate literals.
 // Bumping triggers the `activate` step to sweep old caches and reload clients
 // via the `controllerchange` path in diary.js.
-const SW_VERSION = '7.84';
+const SW_VERSION = '8.14';
 const STATIC_CACHE  = 'first-light-static-v'  + SW_VERSION;
 const RUNTIME_CACHE = 'first-light-runtime-v' + SW_VERSION;
 
@@ -50,6 +50,9 @@ const PRECACHE_URLS = [
   './deerschool.js',
   './questions.js',
   './diary-guide.html',
+  'https://firstlightdeer.co.uk/species/UKDTR_logo.JPG',
+  'https://firstlightdeer.co.uk/species/bds_logo.jpg',
+  'https://firstlightdeer.co.uk/species/basc_logo.png',
   './vendor/leaflet/leaflet.min.css',
   './vendor/leaflet/leaflet.min.js',
   './vendor/leaflet/images/marker-icon.png',

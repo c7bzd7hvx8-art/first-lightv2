@@ -626,24 +626,80 @@ function normalizeUkPlaceName(raw) {
 }
 
 /**
- * Prefer the smallest named place (village/hamlet before town/city). In the UK, town/city
- * often holds the district/council name (e.g. "King's Lynn and West Norfolk") while the
- * actual settlement is in village — wrong order produced "King's Lynn…" for West Acre.
+ * True when Nominatim's `town`/`city` looks like a merged UK council or wide district name,
+ * not a single settlement — then we prefer a smaller `village` / `hamlet` in the same address.
  */
+function looksLikeUkMergedAdminPlaceName(s) {
+  if (!s || typeof s !== 'string') return false;
+  var t = s.trim();
+  if (t.length >= 42) return true;
+  if (/\b(and|&)\b/i.test(t) && t.length >= 16) return true;
+  if (/Metropolitan Borough|Unitary Authority|Borough of|District of|County of/i.test(t)) return true;
+  return false;
+}
+
+/** Nominatim reverse: `addresstype` values we treat as a named settlement / locality label. */
+var NOMINATIM_PLACE_ADDRTYPES = {
+  village: true, hamlet: true, town: true, city: true, suburb: true,
+  neighbourhood: true, locality: true, municipality: true, quarter: true, city_district: true
+};
+
+/**
+ * Short label from a Nominatim reverse result. Call with `format=jsonv2` and `zoom=15` (settlement
+ * level per Nominatim docs) so the matched feature is the nearest suitable place, not default
+ * zoom 18 road/building — otherwise `address.village` can be a wider parish while the road is primary.
+ * Prefer `address[addresstype]` when addresstype is place-like; if that value is a merged district,
+ * prefer village/hamlet when present (e.g. West Acre vs King's Lynn and West Norfolk).
+ */
+function labelFromNominatimReverse(data) {
+  data = data || {};
+  var addr = data.address || {};
+  var at = data.addresstype;
+  var displayFirst = (data.display_name || '').split(',')[0].trim();
+
+  if (at && NOMINATIM_PLACE_ADDRTYPES[at]) {
+    var raw = addr[at] || data.name;
+    if (raw && typeof raw === 'string') {
+      if (looksLikeUkMergedAdminPlaceName(raw)) {
+        var alt = addr.village || addr.hamlet || addr.suburb || addr.neighbourhood;
+        if (alt && String(alt).trim() !== String(raw).trim()) {
+          return normalizeUkPlaceName(alt) || alt;
+        }
+      }
+      return normalizeUkPlaceName(raw) || raw;
+    }
+  }
+
+  if ((at === 'city' || at === 'town') && (addr.village || addr.hamlet)) {
+    var bulk = addr[at];
+    if (bulk && looksLikeUkMergedAdminPlaceName(bulk)) {
+      return normalizeUkPlaceName(addr.village || addr.hamlet) || (addr.village || addr.hamlet);
+    }
+  }
+
+  var fb = primaryPlaceFromAddress(addr, displayFirst);
+  return normalizeUkPlaceName(fb) || fb || '';
+}
+
 function primaryPlaceFromAddress(a, displayNameFirstPart) {
   a = a || {};
-  var p =
+  var nb =
     a.neighbourhood ||
     a.suburb ||
-    a.village ||
-    a.hamlet ||
     a.locality ||
-    a.isolated_dwelling ||
-    a.town ||
-    a.city ||
-    a.municipality ||
     '';
-  if (p) return p;
+  if (nb) return nb;
+
+  var townish = a.town || a.city || a.municipality || '';
+  var vill = a.village || a.hamlet || '';
+  var iso = a.isolated_dwelling || '';
+
+  if (townish && vill && looksLikeUkMergedAdminPlaceName(townish)) {
+    return vill || iso || townish;
+  }
+  if (townish) return townish;
+  if (vill) return vill;
+  if (iso) return iso;
   return (displayNameFirstPart || '').trim();
 }
 
@@ -1266,6 +1322,11 @@ function initCalendar() {
 // opts.tooltip — optional full Nominatim display line for native tooltip when label is short
 function updateBanner(lat, lng, locationName, opts) {
   opts = opts || {};
+  if (typeof lat !== 'number' || typeof lng !== 'number' || !isFinite(lat) || !isFinite(lng) || !isInUK(lat, lng)) {
+    try { localStorage.removeItem('fl_state'); } catch (e) {}
+    showOutsideUKMessage();
+    return;
+  }
   // ── 7: Accuracy warning shown by caller; store state ──
   var ok = computeBannerState(lat, lng, locationName);
   if (!ok) {
@@ -1423,7 +1484,29 @@ function isInUK(lat, lng) {
       && lng >= UK_BOUNDS.lngMin && lng <= UK_BOUNDS.lngMax;
 }
 
+/** Clear stored coords/solar so ticks and weather do not keep using a non-UK location. */
+function clearBannerStateLocation() {
+  bannerState.sunriseMin = null;
+  bannerState.sunsetMin = null;
+  bannerState.legalStartMin = null;
+  bannerState.legalEndMin = null;
+  bannerState.isLegal = false;
+  bannerState.isTwilight = false;
+  bannerState.nextLegalStartMin = null;
+  bannerState.lat = null;
+  bannerState.lng = null;
+  bannerState.locationName = '';
+  bannerState.locationTooltip = '';
+  bannerState._sunrise = null;
+  bannerState._sunset = null;
+  bannerState._legalStart = null;
+  bannerState._legalEnd = null;
+  _weatherCache = { data: null, ts: 0, lat: null, lng: null };
+  _wfWeatherCache = { data: null, ts: 0, lat: null, lng: null };
+}
+
 function showOutsideUKMessage() {
+  clearBannerStateLocation();
   ui.showLocationPrompt('🇬🇧 First Light covers UK locations only');
   // Show a brief toast
   var toast = document.createElement('div');
@@ -1438,20 +1521,25 @@ function showOutsideUKMessage() {
 }
 
 function initBanner() {
-  // ── Restore last saved location ──────────────────────────────
+  // ── Restore last saved location (must be UK — fl_state can contain stale non-UK coords) ──
   var saved = ui.loadState();
   if (saved && saved.lat !== undefined) {
-    var restored = (saved.name || 'Saved location').replace(' (default)', '').replace(', England', '');
-    updateBanner(saved.lat, saved.lng, normalizeUkPlaceName(restored.trim()));
-    if (saved.tab) {
-      var tabMap = { species: 0, times: 1, calendar: 2, shots: 3 };
-      var navTabs = document.querySelectorAll('.nav-tab');
-      if (navTabs[tabMap[saved.tab]]) {
-        switchMainTab(saved.tab);
-        navTabs[tabMap[saved.tab]].classList.add('active');
+    if (!isInUK(saved.lat, saved.lng)) {
+      try { localStorage.removeItem('fl_state'); } catch (e) {}
+      clearBannerStateLocation();
+    } else {
+      var restored = (saved.name || 'Saved location').replace(' (default)', '').replace(', England', '');
+      updateBanner(saved.lat, saved.lng, normalizeUkPlaceName(restored.trim()));
+      if (saved.tab) {
+        var tabMap = { species: 0, times: 1, calendar: 2, shots: 3 };
+        var navTabs = document.querySelectorAll('.nav-tab');
+        if (navTabs[tabMap[saved.tab]]) {
+          switchMainTab(saved.tab);
+          navTabs[tabMap[saved.tab]].classList.add('active');
+        }
       }
+      return;
     }
-    return;
   }
 
   // Show locating state while GPS resolves
@@ -1477,18 +1565,15 @@ function initBanner() {
         return;
       }
       ui.showAccuracyWarning(acc);
-      fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json', {
+      fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=jsonv2&addressdetails=1&zoom=15', {
         headers: { 'Accept-Language': 'en', 'User-Agent': 'FirstLightApp/1.0' }
       })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          var addr = data.address || {};
-          var displayFirst = (data.display_name || '').split(',')[0].trim();
-          var raw =
-            primaryPlaceFromAddress(addr, displayFirst) ||
-            addr.county ||
+          var name =
+            labelFromNominatimReverse(data) ||
+            normalizeUkPlaceName((data.address || {}).county) ||
             'Your Location';
-          var name = normalizeUkPlaceName(raw);
           updateBanner(lat, lng, name, { tooltip: data.display_name || name });
         })
         .catch(function() { updateBanner(lat, lng, 'Your Location'); });
@@ -2531,7 +2616,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Rut calendar: peak activity boost per species per month (0=none, 30=peak)
 // Species: [Red, Fallow, Sika, Roe, CWD]
-// Sources: BDS, BASC, Deer Initiative
+// Sources: BDS, BASC, Deer Initiative; Sika Oct/Nov shaped to Scotland Wild Deer BPG
+// (peak rutting mid Sep–end Oct) + BDS regional late-rut notes (activity into Nov).
 var RUT_SPECIES = ['Red', 'Fallow', 'Sika', 'Roe', 'CWD'];
 var RUT_CALENDAR = {
   1:  [0,  0,  0,  0,  15],
@@ -2543,8 +2629,8 @@ var RUT_CALENDAR = {
   7:  [0,  0,  0,  30, 0 ],
   8:  [5,  0,  0,  20, 0 ],
   9:  [20, 5,  5,  0,  0 ],
-  10: [30, 30, 15, 0,  0 ],
-  11: [15, 20, 30, 0,  20],
+  10: [30, 30, 30, 0,  0 ],
+  11: [15, 20, 15, 0,  20],
   12: [0,  5,  15, 0,  30],
 };
 
@@ -3187,6 +3273,10 @@ function selectPreset(lat, lng, name, btn) {
   document.querySelectorAll('.loc-preset').forEach(function(b) { b.classList.remove('selected'); });
   if (btn) btn.classList.add('selected');
   ui.closeLocationPicker();
+  if (!isInUK(lat, lng)) {
+    showOutsideUKMessage();
+    return;
+  }
   updateBanner(lat, lng, name);
 }
 
@@ -3333,18 +3423,15 @@ function useMyLocation() {
       }
       ui.showAccuracyWarning(acc);
 
-      fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json', {
+      fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=jsonv2&addressdetails=1&zoom=15', {
         headers: { 'Accept-Language': 'en', 'User-Agent': 'FirstLightApp/1.0' }
       })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          var addr = data.address || {};
-          var displayFirst = (data.display_name || '').split(',')[0].trim();
-          var raw =
-            primaryPlaceFromAddress(addr, displayFirst) ||
-            addr.county ||
+          var name =
+            labelFromNominatimReverse(data) ||
+            normalizeUkPlaceName((data.address || {}).county) ||
             'Your Location';
-          var name = normalizeUkPlaceName(raw);
           updateBanner(lat, lng, name, { tooltip: data.display_name || name });
         })
         .catch(function() { updateBanner(lat, lng, 'Your Location'); });

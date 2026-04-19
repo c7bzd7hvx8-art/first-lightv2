@@ -172,17 +172,26 @@ option:checked{background-color:#e8f2dc;color:#15370a;}
 #v-list{background:var(--cream);}
 .list-hdr{background:linear-gradient(160deg,#0f1e0a,#0a1506);padding:54px 18px 20px;flex-shrink:0;position:relative;}
 .list-hdr::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(to right,transparent,rgba(200,168,75,0.15),transparent);}
-.list-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
+/* min-width:0 on the title column lets the flex row shrink inside the 430px
+   column on narrow phones. Without it, .list-title + .hstats can exceed 100%
+   width — Safari then shows a horizontal scroll / clipped right edge that
+   *looks* like the page is zoomed; it is not the same as the 16px focus-zoom. */
+.list-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:8px;min-width:0;}
+.list-top > div:first-child{min-width:0;flex:1 1 auto;}
 .list-title{font-family:'Playfair Display',serif;font-size:28px;color:white;line-height:1;}
 .list-season{font-size:10px;color:rgba(200,168,75,0.65);text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-weight:600;font-family:'DM Mono',monospace;}
-.hstats{display:flex;gap:1px;background:rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);}
-.hs{padding:9px 13px;text-align:center;}
+.hstats{display:flex;gap:1px;background:rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);flex-shrink:0;max-width:100%;}
+.hs{padding:9px 10px;text-align:center;min-width:0;}
+@media (max-width:380px){
+  .hs{padding:8px 7px;}
+  .hsn{font-size:16px;}
+}
 .hs+.hs{border-left:1px solid rgba(255,255,255,0.07);}
 .hsn{font-size:18px;font-weight:700;color:var(--amber);line-height:1;font-variant-numeric:tabular-nums;}
 .hsl{font-size:7px;text-transform:uppercase;letter-spacing:0.5px;color:rgba(255,255,255,0.3);margin-top:2px;font-family:'DM Mono',monospace;}
 .list-row2{display:flex;gap:6px;align-items:center;margin-top:12px;}
 .season-sel{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:7px 12px;color:rgba(255,255,255,0.8);font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;-webkit-appearance:none;outline:none;}
-.season-pill-sel{background:rgba(200,168,75,0.12);border:1px solid rgba(200,168,75,0.25);border-radius:8px;padding:5px 10px;color:var(--amber);font-size:11px;font-weight:600;font-family:'DM Mono',monospace;-webkit-appearance:none;outline:none;cursor:pointer;flex-shrink:0;}
+.season-pill-sel{background:rgba(200,168,75,0.12);border:1px solid rgba(200,168,75,0.25);border-radius:8px;padding:5px 10px;color:var(--amber);font-size:11px;font-weight:600;font-family:'DM Mono',monospace;-webkit-appearance:none;outline:none;cursor:pointer;min-width:0;}
 .hdr-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:7px 10px;min-height:36px;color:rgba(255,255,255,0.65);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
 .filter-bar{display:flex;gap:6px;padding:12px 14px 8px;overflow-x:auto;scrollbar-width:none;flex-shrink:0;}
 .filter-bar::-webkit-scrollbar{display:none;}
@@ -224,8 +233,8 @@ option:checked{background-color:#e8f2dc;color:#15370a;}
      buttons don't fly off to the edges of a wide browser viewport. */
   position:fixed;bottom:0;left:50%;transform:translateX(-50%);
   width:100%;max-width:430px;
-  display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));
   background:linear-gradient(180deg,rgba(14,42,8,0.96) 0%,rgba(14,42,8,1) 100%);
   border-top:1px solid rgba(200,168,75,0.35);
   box-shadow:0 -8px 24px rgba(0,0,0,0.28);
@@ -233,21 +242,34 @@ option:checked{background-color:#e8f2dc;color:#15370a;}
   z-index:260;color:#fff;
 }
 .select-bar[hidden]{display:none;}
-.select-bar-info{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;}
+.select-bar-info{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;flex-shrink:0;}
 .select-bar-cancel{
-  width:32px;height:32px;border-radius:50%;
+  width:30px;height:30px;border-radius:50%;
   background:rgba(255,255,255,0.1);color:#fff;
   border:1px solid rgba(255,255,255,0.15);
-  font-size:16px;line-height:1;cursor:pointer;
+  font-size:15px;line-height:1;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
 }
-.select-bar-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+/* 2×2 grid keeps long labels from each taking a full-width row (felt oversized). */
+.select-bar-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  flex:1;
+  min-width:0;
+}
 .select-bar-btn{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:9px 14px;border-radius:10px;
-  font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;letter-spacing:0.2px;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  padding:7px 8px;border-radius:9px;
+  font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.15px;
+  line-height:1.2;
+  text-align:center;
+  white-space:normal;
   background:rgba(255,255,255,0.12);color:#fff;
   border:1px solid rgba(255,255,255,0.18);cursor:pointer;
+}
+.select-bar-btn svg{
+  width:11px;height:11px;flex-shrink:0;
 }
 .select-bar-btn-primary{
   background:linear-gradient(180deg,#d4b455 0%,#b1902f 100%);
@@ -269,7 +291,7 @@ option:checked{background-color:#e8f2dc;color:#15370a;}
 body.in-select-mode .fab,
 body.in-select-mode .fab-quick,
 body.in-select-mode .nav{display:none;}
-body.in-select-mode .entries{padding-bottom:104px;}
+body.in-select-mode .entries{padding-bottom:92px;}
 /* Subtle hint on the Select toggle */
 #select-mode-toggle{color:var(--bark);}
 #select-mode-toggle svg{color:#5a7a30;}
@@ -714,18 +736,19 @@ body.in-select-mode .entries{padding-bottom:104px;}
 
 /* ── Cull map view ── */
 .cullmap-wrap{background:white;margin:12px 12px 1px;border:1px solid var(--stone);border-radius:16px;overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,0.55) inset;}
-.cullmap-head{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 10px;gap:10px;}
+.cullmap-head{position:relative;z-index:5;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:14px 14px 10px;gap:8px;min-width:0;}
+.cullmap-head > div:first-of-type{min-width:0;flex:1 1 0%;}
 .cullmap-title{font-size:14px;font-weight:700;color:var(--bark);}
-#cullmap-sub{font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;line-height:1.35;}
-.cullmap-ctrl{display:flex;align-items:center;gap:6px;}
+#cullmap-sub{font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;line-height:1.35;overflow-wrap:anywhere;word-break:break-word;}
+.cullmap-ctrl{display:flex;align-items:center;gap:6px;flex-shrink:0;}
 .cullmap-ctrl .layer-tog{position:static;box-shadow:none;border:1.5px solid #e8e4de;}
-.cullmap-filter{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--stone);overflow-x:auto;scrollbar-width:none;}
+.cullmap-filter{position:relative;z-index:5;background:#fff;display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--stone);overflow-x:auto;scrollbar-width:none;}
 .cullmap-filter::-webkit-scrollbar{display:none;}
 .cmf-chip{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;padding:5px 11px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid var(--stone);background:white;color:var(--bark);white-space:nowrap;font-family:'DM Sans',sans-serif;appearance:none;-webkit-appearance:none;line-height:1.2;}
 .cmf-chip.on{background:var(--forest);color:white;border-color:var(--forest);}
 .cmf-spec-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .cmf-chip.on .cmf-spec-dot{box-shadow:0 0 0 1.5px rgba(255,255,255,0.5);}
-#cull-map-container{width:100%;height:248px;position:relative;}
+#cull-map-container{width:100%;height:248px;position:relative;z-index:1;}
 .cull-map-stats{display:flex;border-top:1px solid var(--stone);}
 .cms-cell{flex:1;padding:10px 8px;text-align:center;border-right:1px solid var(--stone);}
 .cms-cell:last-child{border-right:none;}
@@ -766,12 +789,24 @@ body.in-select-mode .entries{padding-bottom:104px;}
 /* ══════════════════════════════
    STATS VIEW
 ══════════════════════════════ */
+/* Do not set overflow-x on #v-stats — iOS Safari can clip or break native <select>
+   pickers so not all <option>s appear. Contain horizontal bleed on .stats-scroll instead. */
 #v-stats{background:var(--cream);}
-.stats-hdr{background:linear-gradient(160deg,#0f1e0a,#0a1506);padding:54px 18px 20px;flex-shrink:0;}
-.stats-hdr h2{font-family:'Playfair Display',serif;font-size:26px;color:white;}
+.stats-hdr{background:linear-gradient(160deg,#0f1e0a,#0a1506);padding:54px 18px 20px;flex-shrink:0;min-width:0;}
+/* Long <option> text makes native <select> size to the longest label; min-width:0 + cap
+   avoids row overflow (same as .list-top). On narrow screens stack so the pill is full-width
+   and "Next" / next season stay visible. */
+.stats-hdr-row{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 12px;min-width:0;}
+.stats-hdr-row h2{font-family:'Playfair Display',serif;font-size:26px;color:white;min-width:0;flex:1 1 auto;line-height:1.15;}
+.stats-hdr .season-pill-sel{flex:0 1 auto;max-width:min(230px,48vw);}
+@media (max-width:400px){
+  .stats-hdr-row{flex-direction:column;align-items:stretch;}
+  .stats-hdr-row h2{flex:none;}
+  .stats-hdr .season-pill-sel{max-width:none;width:100%;}
+}
 .stats-hdr p{font-size:10px;color:rgba(200,168,75,0.65);text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-weight:600;font-family:'DM Mono',monospace;}
 /* Extra bottom padding so export rows (esp. syndicate: label + buttons) clear the fixed nav (z-index 200) */
-.stats-scroll{flex:1;overflow-y:auto;padding-bottom:calc(120px + env(safe-area-inset-bottom, 0px));position:relative;}
+.stats-scroll{flex:1;overflow-x:hidden;overflow-y:auto;padding-bottom:calc(120px + env(safe-area-inset-bottom, 0px));position:relative;overflow-anchor:none;}
 .stats-loading-overlay{position:absolute;left:0;right:0;top:0;min-height:320px;z-index:25;background:rgba(250,248,244,0.96);backdrop-filter:blur(2px);padding:16px 14px 24px;box-sizing:border-box;display:none;flex-direction:column;gap:16px;pointer-events:none;}
 .stats-loading-overlay.is-on{display:flex;}
 .stats-skel-statgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}

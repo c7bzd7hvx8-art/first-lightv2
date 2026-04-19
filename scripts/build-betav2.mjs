@@ -1,6 +1,8 @@
 /**
- * Recreate ../betav2/ with all static files needed for web hosting.
- * Run from repo root: node scripts/build-betav2.mjs
+ * Recreate a deploy folder with all static files needed for web hosting.
+ * Run from repo root:
+ *   node scripts/build-betav2.mjs           → ../betav2/
+ *   node scripts/build-betav2.mjs beta_v2  → ../beta_v2/
  */
 
 import fs from 'fs';
@@ -9,7 +11,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const DEST = path.join(ROOT, 'betav2');
+const OUT_DIR = process.argv[2] || 'betav2';
+const DEST = path.join(ROOT, OUT_DIR);
 
 const ROOT_FILES = [
   'index.html',
@@ -75,6 +78,11 @@ function main() {
   cp(path.join(ROOT, 'lib', 'fl-pure.mjs'), path.join(DEST, 'lib', 'fl-pure.mjs'));
   copyDir(path.join(ROOT, 'vendor'), path.join(DEST, 'vendor'));
 
+  const speciesDir = path.join(ROOT, 'species');
+  if (fs.existsSync(speciesDir)) {
+    copyDir(speciesDir, path.join(DEST, 'species'));
+  }
+
   if (readmeBackup) {
     fs.writeFileSync(path.join(DEST, 'README.md'), readmeBackup, 'utf8');
   }
@@ -88,7 +96,7 @@ function main() {
     }
   }
   count(DEST);
-  console.log('OK:', DEST, '| files:', n);
+  console.log('OK:', DEST, '| files:', n, '| out:', OUT_DIR);
 }
 
 main();

@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <script src="vendor/leaflet/leaflet.min.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<meta name="fl-mapbox-token" content="pk.eyJ1IjoibWlyc29oYWliNyIsImEiOiJjbW8xOXhlNm4wNmUyMnBzNzBrdHg2Y2cxIn0.as0v71QJj4wq48f0x3gBXg">
+<meta name="fl-mapbox-token" content="pk.eyJ1IjoibWlyc29oYWliNyIsImEiOiJjbW80dndqZjQxMXFqMnJxdzVzZjVzN2I0In0.vZCwBljNfCNdaQS6Di0gkA">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
 <!-- jsPDF for PDF export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
@@ -189,7 +189,7 @@
     <div class="select-bar-actions">
       <button class="select-bar-btn" type="button" data-fl-action="select-all-visible">All visible</button>
       <button class="select-bar-btn" type="button" id="select-csv-btn" data-fl-action="bulk-csv-selected" disabled title="CSV of selected entries"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M5 21h14"/></svg>CSV</button>
-      <button class="select-bar-btn select-bar-btn-primary" type="button" id="select-consignment-btn" data-fl-action="export-consignment-dealer" disabled><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Game dealer PDF</button>
+      <button class="select-bar-btn select-bar-btn-primary" type="button" id="select-consignment-btn" data-fl-action="export-consignment-dealer" disabled title="Game dealer consignment PDF" aria-label="Generate game dealer consignment PDF for selected entries"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Dealer PDF</button>
       <button class="select-bar-btn select-bar-btn-danger" type="button" id="select-delete-btn" data-fl-action="bulk-delete-selected" disabled title="Delete selected entries"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>Delete</button>
     </div>
   </div>
@@ -489,7 +489,7 @@
         <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:rgba(200,168,75,0.6);font-family:'DM Mono',monospace;">First Light</span>
       </a>
     </div>
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;">
+    <div class="stats-hdr-row">
       <h2>Season Statistics</h2>
       <select class="season-pill-sel" id="season-select-stats">
       </select>

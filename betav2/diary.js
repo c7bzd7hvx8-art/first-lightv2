@@ -259,6 +259,33 @@ function isCurrentSeason(season) {
   return season === startYear + '-' + String(startYear + 1).slice(-2);
 }
 
+/** UK deer season immediately after `seasonKey` (Aug–Jul), e.g. 2025-26 → 2026-27. */
+function getNextSeasonAfter(seasonKey) {
+  if (!seasonKey || seasonKey === '__all__') return null;
+  var parts = String(seasonKey).split('-');
+  var startY = parseInt(parts[0], 10);
+  if (!Number.isFinite(startY)) return null;
+  var nextStart = startY + 1;
+  return nextStart + '-' + String(nextStart + 1).slice(-2);
+}
+
+/**
+ * Personal cull targets (and syndicate group targets keyed by season) may be
+ * edited for the active season or the **next** Aug–Jul season so managers can
+ * plan before 1 August — previously blocked until the season started.
+ */
+function seasonAllowsTargetEditing(seasonKey) {
+  if (!seasonKey || seasonKey === '__all__') return false;
+  if (isCurrentSeason(seasonKey)) return true;
+  var upcoming = getNextSeasonAfter(getCurrentSeason());
+  return !!(upcoming && seasonKey === upcoming);
+}
+
+function isPastSeasonForTargets(seasonKey) {
+  if (!seasonKey || seasonKey === '__all__') return false;
+  return !seasonAllowsTargetEditing(seasonKey);
+}
+
 async function loadTargets(season) {
   if (!sb || !currentUser) return;
   try {
@@ -345,17 +372,21 @@ function renderPlanCard(entries, season) {
   var planSub = document.getElementById('plan-sub');
   if (!body) return;
 
-  // Hide edit button for past seasons
-  var isCurrent = isCurrentSeason(season);
-  if (editBtn) editBtn.style.display = isCurrent ? '' : 'none';
-  if (planSub) planSub.textContent = isCurrent ? 'Cull targets vs actual' : 'Past season · read only';
+  // Hide edit for past seasons only — current + next season are editable (plan ahead).
+  var canEditTargets = seasonAllowsTargetEditing(season);
+  if (editBtn) editBtn.style.display = canEditTargets ? '' : 'none';
+  if (planSub) {
+    if (isCurrentSeason(season)) planSub.textContent = 'Cull targets vs actual';
+    else if (seasonAllowsTargetEditing(season)) planSub.textContent = 'Next season · plan ahead';
+    else planSub.textContent = 'Past season · read only';
+  }
 
   // Check if any targets set — either season or ground mode
   var hasSeasonTargets = Object.keys(cullTargets).some(function(k) { return cullTargets[k] > 0; });
   var hasGrndTargets = hasGroundTargets();
   var hasTargets = hasSeasonTargets || hasGrndTargets;
   if (!hasTargets) {
-    body.innerHTML = isCurrent
+    body.innerHTML = canEditTargets
       ? '<div class="plan-empty"><div class="plan-empty-icon" aria-hidden="true">' + SVG_PLAN_TARGET_ICON + '</div><div class="plan-empty-t">No targets set</div><div class="plan-empty-s">Set cull targets to track your season plan against actual results.</div><button type="button" class="plan-set-btn" data-fl-action="open-targets">Set targets</button></div>'
       : '<div class="plan-empty"><div class="plan-empty-icon" aria-hidden="true">' + SVG_PLAN_TARGET_ICON + '</div><div class="plan-empty-t">No targets were set</div><div class="plan-empty-s">No cull plan was recorded for this season.</div></div>';
     return;
@@ -459,13 +490,13 @@ function renderPlanCard(entries, season) {
   html += '<div class="plan-total-count">' + totalActual + '/' + totalTarget + '</div>';
   html += '</div>';
 
-  if (!isCurrent) html += '<div class="plan-past-note">Past season — read only</div>';
+  if (isPastSeasonForTargets(season)) html += '<div class="plan-past-note">Past season — read only</div>';
 
   body.innerHTML = html;
 }
 
 function openTargetsSheet() {
-  if (!isCurrentSeason(currentSeason)) return; // only edit current season
+  if (!seasonAllowsTargetEditing(currentSeason)) return;
 
   // Populate season steppers (sum of grounds + pool when that split is in use)
   var disp = getSeasonSheetDisplayTotals();
@@ -977,6 +1008,9 @@ function initDiaryFlUi() {
       case 'synd-promote-member':
         syndPromoteMember(el.getAttribute('data-member-user-id'));
         break;
+      case 'synd-demote-member':
+        syndDemoteMember(el.getAttribute('data-member-user-id'));
+        break;
       case 'synd-remove-member':
         syndRemoveMember(el.getAttribute('data-member-user-id'));
         break;
@@ -1168,10 +1202,11 @@ function populateSeasonDropdown(seasons) {
     allOpt.textContent = 'All seasons';
     sel.appendChild(allOpt);
   }
+  var nextFromNow = getNextSeasonAfter(getCurrentSeason());
   seasons.forEach(function(s) {
     var opt = document.createElement('option');
     opt.value = s;
-    opt.textContent = seasonLabel(s);
+    opt.textContent = seasonLabel(s) + (nextFromNow && s === nextFromNow ? ' · Next' : '');
     sel.appendChild(opt);
   });
   sel.value = currentSeason;
@@ -1191,6 +1226,11 @@ function buildSeasonList(earliestSeason) {
   // Go from current back to earliest (or max 10 years)
   for (var y = startYear; y >= Math.max(endYear, startYear - 9); y--) {
     seasons.push(y + '-' + String(y + 1).slice(-2));
+  }
+  // One season ahead of “now” for plan-ahead targets (syndicates / stalkers before 1 Aug).
+  var upcoming = getNextSeasonAfter(current);
+  if (upcoming && seasons.indexOf(upcoming) < 0) {
+    seasons.unshift(upcoming);
   }
   return seasons;
 }
@@ -1310,7 +1350,7 @@ function go(id) {
   if (id === 'v-stats') {
     var statsSelGo = document.getElementById('season-select-stats');
     var listSelGo = document.getElementById('season-select');
-    if (statsSelGo && listSelGo) {
+    if (statsSelGo && listSelGo && listSelGo.options && listSelGo.options.length) {
       statsSelGo.innerHTML = listSelGo.innerHTML;
       statsSelGo.value = currentSeason;
     }
@@ -2355,9 +2395,13 @@ var ABNORMALITY_OPTIONS = [
   { code: 'tumour',           label: 'Tumour / unusual growth' },
   { code: 'parasites-heavy',  label: 'Heavy ecto-parasite burden' },
   { code: 'joints-swollen',   label: 'Swollen / arthritic joints' },
+  { code: 'oedema-general',   label: 'Generalised oedema / swelling (not joint-only)' },
   { code: 'organ-colour',     label: 'Abnormal organ colour or smell' },
+  { code: 'jaundice',         label: 'Jaundice (yellow discolouration)' },
   { code: 'behaviour',        label: 'Abnormal behaviour before shot' },
-  { code: 'bruising',         label: 'Bruising beyond shot path' }
+  { code: 'bruising',         label: 'Bruising beyond shot path' },
+  { code: 'pre-existing-injury', label: 'Pre-existing wounds / injuries / fractures' },
+  { code: 'gralloch-contamination', label: 'Gralloch contamination (rumen spill, faecal)' }
 ];
 // SPEC: lib/fl-pure.mjs#ABNORMALITY_LABEL_BY_CODE — derived from ABNORMALITY_OPTIONS.
 var ABNORMALITY_LABEL_BY_CODE = (function() {
@@ -2734,7 +2778,7 @@ function populateGroundFilterDropdown() {
 
 // ── Multi-select mode ────────────────────────────────────────────
 // Lets the user pick N entries from the list and run a bulk action
-// (today: per-consignment Game Dealer PDF — Reg (EC) 853/2004 allows a
+// (today: per-consignment Game Dealer PDF — assimilated Reg (EC) No 853/2004 allows a
 // single declaration for a whole delivery; plus bulk CSV and bulk delete).
 // `flSelection` is the single source of truth — groups the two former
 // globals (`selectMode`, `selectedEntryIds`) into one object so callers
@@ -2798,7 +2842,16 @@ function renderList() {
   var entries = currentFilter === 'all' ? allEntries : allEntries.filter(function(e){ return e.species === currentFilter; });
   if (currentGroundFilter !== 'all') entries = entries.filter(function(e){ return e.ground === currentGroundFilter; });
   if (currentSearch) entries = entries.filter(function(e) { return entryMatchesSearch(e, currentSearch); });
-  if (listSortAsc) entries = entries.slice().sort(function(a,b){ return (a.date||'').localeCompare(b.date||'') || (a.time||'').localeCompare(b.time||''); });
+  // Full-list order (date + time). Month headings below follow the same order via listSortAsc.
+  if (listSortAsc) {
+    entries = entries.slice().sort(function(a, b) {
+      return (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '');
+    });
+  } else {
+    entries = entries.slice().sort(function(a, b) {
+      return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '');
+    });
+  }
   filteredEntries = entries;
   var container = document.getElementById('entries-container');
 
@@ -2838,7 +2891,12 @@ function renderList() {
   });
 
   var html = '';
-  Object.keys(months).sort(function(a,b){ return b.localeCompare(a); }).forEach(function(ym) {
+  var sortedYm = Object.keys(months).filter(function(k) { return k !== LIST_INVALID_YM; });
+  sortedYm.sort(function(a, b) {
+    return listSortAsc ? a.localeCompare(b) : b.localeCompare(a);
+  });
+  if (months[LIST_INVALID_YM]) sortedYm.push(LIST_INVALID_YM);
+  sortedYm.forEach(function(ym) {
     if (ym === LIST_INVALID_YM) {
       html += '<div class="month-lbl">Other dates</div>';
     } else {
@@ -2935,6 +2993,10 @@ async function openDetail(id) {
       } catch (err) { /* use cached _photoDisplayUrl from list */ }
     }
   }
+  var syndicateDisplay = '';
+  if (e.syndicate_id) {
+    syndicateDisplay = await resolveSyndicateDisplayName(e.syndicate_id);
+  }
   currentEntry = e;
   var spClass = SPECIES_CLASS[e.species] || 'sp-red';
   var sxLbl = sexLabel(e.sex, e.species);
@@ -2978,6 +3040,9 @@ async function openDetail(id) {
     + '<div class="dd-kv"><span class="dd-k">Time</span><span class="dd-v">' + esc(e.time || '–') + '</span></div>'
     + '<div class="dd-kv"><span class="dd-k">Location</span><span class="dd-v">' + (e.location_name ? esc(e.location_name) : '–') + '</span></div>'
     + '<div class="dd-kv"><span class="dd-k">Ground</span><span class="dd-v">' + (e.ground ? esc(e.ground) : '–') + '</span></div>'
+    + (e.syndicate_id
+      ? '<div class="dd-kv"><span class="dd-k">Syndicate</span><span class="dd-v">' + esc(syndicateDisplay || 'Previously assigned (not active)') + '</span></div>'
+      : '')
     + '</div>';
 
   var weightsCard = '<div class="dd-card"><div class="dd-card-lbl">Weight &amp; distance</div><div class="dd-grid2">'
@@ -3389,7 +3454,13 @@ function nominatimFetch(url, ms) {
   var limit = ms === undefined ? 5000 : ms;
   var ctrl = new AbortController();
   var tid = setTimeout(function() { ctrl.abort(); }, limit);
-  return fetch(url, { signal: ctrl.signal }).finally(function() { clearTimeout(tid); });
+  return fetch(url, {
+    signal: ctrl.signal,
+    headers: {
+      'Accept-Language': 'en',
+      'User-Agent': 'FirstLightApp/1.0'
+    }
+  }).finally(function() { clearTimeout(tid); });
 }
 
 function getGPS() {
@@ -3400,7 +3471,7 @@ function getGPS() {
     var lng = pos.coords.longitude.toFixed(4);
     lastGpsLat = parseFloat(lat); lastGpsLng = parseFloat(lng);
     formPinLat = parseFloat(lat); formPinLng = parseFloat(lng);
-    nominatimFetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json')
+    nominatimFetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=jsonv2&addressdetails=1&zoom=15')
       .then(function(r){ return r.json(); })
       .then(function(d) {
         var name = diaryReverseGeocodeLabel(d, lat, lng);
@@ -3883,15 +3954,29 @@ function buildStats(speciesFilter) {
       renderCullMapPins();
       var _sub = document.getElementById('cullmap-sub');
       if (_sub) _sub.textContent = 'Location history · ' + currentSeason;
+
+      // First open of Stats: Leaflet often measures #cull-map-div before the stats flex
+      // layout has a stable size — tiles/clusters can render blank until invalidateSize().
+      // go('v-stats') already does invalidateSize + renderCullMapPins after 150ms on revisit;
+      // repeat that here after full buildStats so pins appear without panning the map.
+      setTimeout(function refitCullMapPins() {
+        if (!cullMap) return;
+        try {
+          cullMap.invalidateSize({ animate: false });
+          renderCullMapPins();
+        } catch (e2) {
+          if (typeof console !== 'undefined' && console.warn) console.warn('refitCullMapPins:', e2);
+        }
+      }, 180);
     } catch (e) {
       if (typeof console !== 'undefined' && console.warn) console.warn('initCullMap failed:', e);
     }
   }, 0);
 
-  // Sync stats season pill with list season dropdown
+  // Sync stats season pill with list season dropdown (never wipe with an empty list)
   var statsSel = document.getElementById('season-select-stats');
   var listSel  = document.getElementById('season-select');
-  if (statsSel && listSel) {
+  if (statsSel && listSel && listSel.options && listSel.options.length) {
     statsSel.innerHTML = listSel.innerHTML;
     statsSel.value = currentSeason;
   }
@@ -4725,7 +4810,7 @@ function exportGameDealerDeclaration(id) {
 
 /**
  * Per-consignment Trained Hunter Declaration.
- * Reg (EC) 853/2004 permits a single declaration covering every carcass in
+ * Assimilated Reg (EC) No 853/2004 permits a single declaration covering every carcass in
  * one consignment (delivery) rather than one declaration per carcass. The
  * user selects N entries from the diary list in Select mode, then triggers
  * this export. The resulting PDF has one header, one table of carcasses,
@@ -4921,7 +5006,7 @@ async function openQuickEntry() {
     navigator.geolocation.getCurrentPosition(function(pos) {
       flQuickEntry.lat = pos.coords.latitude.toFixed(4);
       flQuickEntry.lng = pos.coords.longitude.toFixed(4);
-      nominatimFetch('https://nominatim.openstreetmap.org/reverse?lat=' + flQuickEntry.lat + '&lon=' + flQuickEntry.lng + '&format=json')
+      nominatimFetch('https://nominatim.openstreetmap.org/reverse?lat=' + flQuickEntry.lat + '&lon=' + flQuickEntry.lng + '&format=jsonv2&addressdetails=1&zoom=15')
         .then(function(r){ return r.json(); })
         .then(function(d) {
           flQuickEntry.location = diaryReverseGeocodeLabel(d, flQuickEntry.lat, flQuickEntry.lng);
@@ -5364,7 +5449,7 @@ function openPinDrop() {
       var c = pinMap.getCenter();
       clearTimeout(pinNominatimTimer);
       pinNominatimTimer = setTimeout(function() {
-        nominatimFetch('https://nominatim.openstreetmap.org/reverse?lat='+c.lat+'&lon='+c.lng+'&format=json')
+        nominatimFetch('https://nominatim.openstreetmap.org/reverse?lat='+c.lat+'&lon='+c.lng+'&format=jsonv2&addressdetails=1&zoom=15')
           .then(function(r){ return r.json(); })
           .then(function(d) {
             var name = diaryReverseGeocodeLabel(d, c.lat.toFixed(4), c.lng.toFixed(4));
@@ -5451,8 +5536,8 @@ function initCullMap() {
   var container = document.getElementById('cull-map-div');
   if (!container) return;
 
-  // Set container height
-  container.style.height = '300px';
+  // Height comes from CSS (#cull-map-container + #cull-map-div height:100%). Do not set a
+  // larger inline height than the container — it overflows and can confuse layout/scroll.
 
   cullMap = L.map('cull-map-div', { zoomControl:true, attributionControl:false })
     .setView([54.0, -2.0], 6); // UK overview
@@ -5463,6 +5548,64 @@ function initCullMap() {
   cullSatLayer = L.tileLayer(cullTiles.sat, cullOpts);
   attachCullMapTileErrorHandlers();
   bumpMapLoadEstimate('cull-map');
+
+  // Leaflet zoom +/- uses <a href="#"> which can take focus and scroll the stats panel
+  // (or the window) so the Cull Map toolbar looks like it vanished. Mitigations: keep
+  // zoom links out of the tab order, snapshot scroll on zoomstart, restore after zoomend,
+  // and defocus the control after zoom.
+  (function attachCullMapStatsScrollLock() {
+    var statsScrollEl = document.querySelector('#v-stats .stats-scroll');
+    if (!statsScrollEl || !cullMap.zoomControl) return;
+    var keepScroll = null;
+    var keepWinY = 0;
+    function snapshotScroll() {
+      keepScroll = statsScrollEl.scrollTop;
+      keepWinY = window.pageYOffset || document.documentElement.scrollTop || 0;
+    }
+    function snapshotScrollIfUnset() {
+      if (keepScroll !== null) return;
+      snapshotScroll();
+    }
+    function restoreScroll() {
+      if (keepScroll === null) return;
+      var y = keepScroll;
+      var wy = keepWinY;
+      keepScroll = null;
+      keepWinY = 0;
+      statsScrollEl.scrollTop = y;
+      window.scrollTo(0, wy);
+      requestAnimationFrame(function () {
+        statsScrollEl.scrollTop = y;
+        window.scrollTo(0, wy);
+      });
+      setTimeout(function () {
+        statsScrollEl.scrollTop = y;
+        window.scrollTo(0, wy);
+      }, 0);
+      setTimeout(function () {
+        statsScrollEl.scrollTop = y;
+        window.scrollTo(0, wy);
+      }, 50);
+    }
+    cullMap.whenReady(function () {
+      var zc = cullMap.zoomControl.getContainer && cullMap.zoomControl.getContainer();
+      if (zc) {
+        zc.querySelectorAll('a').forEach(function (a) {
+          a.setAttribute('tabindex', '-1');
+        });
+        zc.addEventListener('pointerdown', snapshotScroll, true);
+        zc.addEventListener('touchstart', snapshotScroll, { passive: true, capture: true });
+      }
+      cullMap.on('zoomstart', snapshotScrollIfUnset);
+      cullMap.on('zoomend', function () {
+        restoreScroll();
+        var ae = document.activeElement;
+        if (ae && zc && zc.contains(ae)) {
+          try { ae.blur(); } catch (e) { /* ignore */ }
+        }
+      });
+    });
+  })();
 }
 
 function setCullLayer(type) {
@@ -6884,6 +7027,33 @@ async function loadMySyndicateRows() {
   return sr.data.map(function(s) { return { syndicate: s, role: roles[s.id] }; });
 }
 
+/**
+ * Human-readable syndicate name for the entry detail card. Tries active
+ * memberships first (same source as the form attribution dropdown), then a
+ * direct `syndicates` read if RLS still allows it (e.g. edge cases).
+ */
+async function resolveSyndicateDisplayName(syndicateId) {
+  if (!syndicateId || !sb || !currentUser) return '';
+  try {
+    var rows = await loadMySyndicateRows();
+    var m = rows.find(function(r) {
+      return r.syndicate && String(r.syndicate.id) === String(syndicateId);
+    });
+    if (m && m.syndicate) {
+      var n = String(m.syndicate.name || '').trim();
+      return n || 'Syndicate';
+    }
+    var one = await sb.from('syndicates').select('name').eq('id', syndicateId).maybeSingle();
+    if (!one.error && one.data) {
+      var n2 = String(one.data.name || '').trim();
+      if (n2) return n2;
+    }
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.warn) console.warn('resolveSyndicateDisplayName:', err);
+  }
+  return '';
+}
+
 async function populateSyndicateAttributionDropdown(selectedId) {
   var sel = document.getElementById('f-syndicate');
   if (!sel) return;
@@ -7323,8 +7493,9 @@ async function openSyndicateManageSheet(sid) {
       var nb = memberNameById[b.user_id] || '';
       return na.localeCompare(nb, undefined, { sensitivity: 'base' });
     });
+    var managerCount = sortedMembers.filter(function(x) { return x.role === 'manager'; }).length;
     bodyHtml += '<div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--bark);">Members</div>'
-      + '<p style="font-size:11px;color:var(--muted);margin:0 0 10px 0;">Everyone in this syndicate right now. Promote at least one member to manager before you leave.</p>'
+      + '<p style="font-size:11px;color:var(--muted);margin:0 0 10px 0;">Everyone in this syndicate right now. Promote at least one member to manager before you leave. With two or more managers, a manager can demote another manager to member (not yourself — ask the other manager).</p>'
       + '<div id="syn-member-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">';
     sortedMembers.forEach(function(m) {
       var label = memberNameById[m.user_id] || ('Member ' + (m.user_id || '').slice(0, 8));
@@ -7341,6 +7512,14 @@ async function openSyndicateManageSheet(sid) {
           + '</div>';
       } else if (m.role === 'member' && isSelf) {
         rmCell = '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">Use Leave below</span>';
+      } else if (m.role === 'manager' && managerCount >= 2 && !isSelf) {
+        rmCell = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">'
+          + '<button type="button" data-fl-action="synd-demote-member" data-member-user-id="' + esc(m.user_id) + '" style="flex-shrink:0;padding:6px 10px;font-size:11px;border:1.5px solid #8d6b2a;color:#6b4f0a;border-radius:8px;background:transparent;font-weight:600;cursor:pointer;">Demote to member</button>'
+          + '</div>';
+      } else if (m.role === 'manager' && managerCount >= 2 && isSelf) {
+        rmCell = '<span style="font-size:10px;color:var(--muted);white-space:nowrap;text-align:right;max-width:140px;">Another manager can demote you</span>';
+      } else if (m.role === 'manager') {
+        rmCell = '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">Only manager</span>';
       } else {
         rmCell = '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">—</span>';
       }
@@ -7637,6 +7816,40 @@ async function syndPromoteMember(userId) {
     return;
   }
   showToast('✅ Member promoted to manager');
+  statsNeedsFullRebuild = true;
+  await renderSyndicateSection();
+  await openSyndicateManageSheet(syndicateEditingId);
+}
+
+async function syndDemoteMember(userId) {
+  if (!sb || !syndicateEditingId || !userId) return;
+  if (userId === currentUser.id) {
+    showToast('⚠️ Ask another manager to demote you from this list.');
+    return;
+  }
+  var mgrCheck = await sb.from('syndicate_members').select('user_id')
+    .eq('syndicate_id', syndicateEditingId).eq('status', 'active').eq('role', 'manager');
+  if (mgrCheck.error || !mgrCheck.data || mgrCheck.data.length < 2) {
+    showToast('⚠️ Keep at least one manager — promote another manager before demoting.');
+    return;
+  }
+  if (!(await flConfirm({
+    title: 'Demote to member?',
+    body: 'They will lose manager permissions until promoted again. At least one manager will remain.',
+    action: 'Demote to member',
+    tone: 'warn'
+  }))) return;
+  var r = await sb.from('syndicate_members')
+    .update({ role: 'member' })
+    .eq('syndicate_id', syndicateEditingId)
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .eq('role', 'manager');
+  if (r.error) {
+    showToast('⚠️ ' + (r.error.message || 'Could not demote member'));
+    return;
+  }
+  showToast('✅ Manager demoted to member');
   statsNeedsFullRebuild = true;
   await renderSyndicateSection();
   await openSyndicateManageSheet(syndicateEditingId);
@@ -8038,20 +8251,69 @@ function normalizeUkPlaceName(raw) {
   );
   return s.trim();
 }
+function looksLikeUkMergedAdminPlaceName(s) {
+  if (!s || typeof s !== 'string') return false;
+  var t = s.trim();
+  if (t.length >= 42) return true;
+  if (/\b(and|&)\b/i.test(t) && t.length >= 16) return true;
+  if (/Metropolitan Borough|Unitary Authority|Borough of|District of|County of/i.test(t)) return true;
+  return false;
+}
+
+var NOMINATIM_PLACE_ADDRTYPES = {
+  village: true, hamlet: true, town: true, city: true, suburb: true,
+  neighbourhood: true, locality: true, municipality: true, quarter: true, city_district: true
+};
+
+function labelFromNominatimReverse(data) {
+  data = data || {};
+  var addr = data.address || {};
+  var at = data.addresstype;
+  var displayFirst = (data.display_name || '').split(',')[0].trim();
+
+  if (at && NOMINATIM_PLACE_ADDRTYPES[at]) {
+    var raw = addr[at] || data.name;
+    if (raw && typeof raw === 'string') {
+      if (looksLikeUkMergedAdminPlaceName(raw)) {
+        var alt = addr.village || addr.hamlet || addr.suburb || addr.neighbourhood;
+        if (alt && String(alt).trim() !== String(raw).trim()) {
+          return normalizeUkPlaceName(alt) || alt;
+        }
+      }
+      return normalizeUkPlaceName(raw) || raw;
+    }
+  }
+
+  if ((at === 'city' || at === 'town') && (addr.village || addr.hamlet)) {
+    var bulk = addr[at];
+    if (bulk && looksLikeUkMergedAdminPlaceName(bulk)) {
+      return normalizeUkPlaceName(addr.village || addr.hamlet) || (addr.village || addr.hamlet);
+    }
+  }
+
+  var fb = primaryPlaceFromAddress(addr, displayFirst);
+  return normalizeUkPlaceName(fb) || fb || '';
+}
+
 function primaryPlaceFromAddress(a, displayNameFirstPart) {
   a = a || {};
-  var p =
+  var nb =
     a.neighbourhood ||
     a.suburb ||
-    a.village ||
-    a.hamlet ||
     a.locality ||
-    a.isolated_dwelling ||
-    a.town ||
-    a.city ||
-    a.municipality ||
     '';
-  if (p) return p;
+  if (nb) return nb;
+
+  var townish = a.town || a.city || a.municipality || '';
+  var vill = a.village || a.hamlet || '';
+  var iso = a.isolated_dwelling || '';
+
+  if (townish && vill && looksLikeUkMergedAdminPlaceName(townish)) {
+    return vill || iso || townish;
+  }
+  if (townish) return townish;
+  if (vill) return vill;
+  if (iso) return iso;
   return (displayNameFirstPart || '').trim();
 }
 function formatUkLocationLabel(addr, displayNameFirstPart) {
@@ -8065,11 +8327,12 @@ function formatUkLocationLabel(addr, displayNameFirstPart) {
   return parts.join(', ') || normalizeUkPlaceName(displayNameFirstPart) || '';
 }
 function diaryReverseGeocodeLabel(d, latFallback, lngFallback) {
-  var a = d.address || {};
-  var displayFirst = (d.display_name || '').split(',')[0].trim();
-  var raw = primaryPlaceFromAddress(a, displayFirst) || a.county || '';
-  if (!raw) return latFallback + ', ' + lngFallback;
-  return normalizeUkPlaceName(raw);
+  var name =
+    labelFromNominatimReverse(d) ||
+    normalizeUkPlaceName((d.address || {}).county) ||
+    '';
+  if (!name) return latFallback + ', ' + lngFallback;
+  return name;
 }
 function diaryEscHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

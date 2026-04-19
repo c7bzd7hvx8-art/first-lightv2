@@ -38,9 +38,13 @@ export const ABNORMALITY_OPTIONS = [
   { code: 'tumour',          label: 'Tumour / unusual growth' },
   { code: 'parasites-heavy', label: 'Heavy ecto-parasite burden' },
   { code: 'joints-swollen',  label: 'Swollen / arthritic joints' },
+  { code: 'oedema-general',  label: 'Generalised oedema / swelling (not joint-only)' },
   { code: 'organ-colour',    label: 'Abnormal organ colour or smell' },
+  { code: 'jaundice',        label: 'Jaundice (yellow discolouration)' },
   { code: 'behaviour',       label: 'Abnormal behaviour before shot' },
-  { code: 'bruising',        label: 'Bruising beyond shot path' }
+  { code: 'bruising',        label: 'Bruising beyond shot path' },
+  { code: 'pre-existing-injury', label: 'Pre-existing wounds / injuries / fractures' },
+  { code: 'gralloch-contamination', label: 'Gralloch contamination (rumen spill, faecal)' }
 ];
 
 export const ABNORMALITY_LABEL_BY_CODE = (function() {

@@ -909,7 +909,7 @@ export function buildSyndicateLarderBookPDF({ syndicate, season, rows }) {
 }
 
 // ── Per-carcass Trained Hunter Declaration (game dealer) ───────────────────
-// Regulation (EC) 853/2004 requires a trained hunter to declare that each
+// Assimilated Regulation (EC) No 853/2004 (GB) requires a trained hunter to declare that each
 // carcass presented to a game dealer was examined at gralloch. This is the
 // per-carcass version — caller passes an already-resolved entry.
 //
@@ -938,7 +938,7 @@ export function buildGameDealerDeclarationPDF({ entry, user }) {
   drawProfessionalHeader(doc, {
     pageW,
     title: 'Trained Hunter Declaration',
-    subtitle: 'Wild Game — Regulation (EC) 853/2004',
+    subtitle: 'Wild Game — Assimilated Regulation (EC) No 853/2004',
   });
 
   // Long-form date + bracketed ISO for audit cross-reference. Matches the
@@ -988,7 +988,7 @@ export function buildGameDealerDeclarationPDF({ entry, user }) {
 
   if (hasStructured) {
     if (abnormCodes && abnormCodes.length === 1 && abnormCodes[0] === 'none') {
-      doc.text('✓ No abnormalities observed at gralloch.', 20, y);
+      doc.text('- No abnormalities observed at gralloch.', 20, y);
       y += 7;
       if (abnormOther) {
         const altLines = doc.splitTextToSize('Additional note: ' + abnormOther, pageW - 40);
@@ -1031,7 +1031,7 @@ export function buildGameDealerDeclarationPDF({ entry, user }) {
   // `splitTextToSize` now flows the sentence to fit `pageW - 40` (20mm
   // gutters each side) and drops each line on a 6mm baseline.
   doc.setFontSize(10);
-  const declText = 'I, the undersigned trained hunter, declare that I have examined this carcass and its viscera at the time of gralloching and found no abnormalities other than those noted above. I also observed no abnormal behaviour before the kill, and am not aware of any environmental contamination affecting the area where the animal was taken. (Declaration made under Regulation (EC) 853/2004, Annex III, Section IV, Chapter II.)';
+  const declText = 'I, the undersigned trained hunter, declare that I have examined this carcass and its viscera at the time of gralloching and found no abnormalities other than those noted above. I further declare that no abnormal behaviour was observed before the kill, and that I have no suspicion of environmental contamination affecting the kill site. (Declaration made under assimilated Regulation (EC) No 853/2004, Annex III, Section IV, Chapter II.)';
   const declLines = doc.splitTextToSize(declText, pageW - 40);
   doc.text(declLines, 20, y);
   y += declLines.length * 6 + 10;
@@ -1071,7 +1071,7 @@ export function buildGameDealerDeclarationPDF({ entry, user }) {
 }
 
 // ── Per-consignment Trained Hunter Declaration ─────────────────────────────
-// Reg (EC) 853/2004 permits a single declaration covering every carcass in
+// Assimilated Reg (EC) No 853/2004 permits a single declaration covering every carcass in
 // one consignment (delivery) rather than one declaration per carcass. The
 // user selects N entries from the diary list in Select mode; caller passes
 // the resolved entry rows — this function does the "Left on hill" exclusion
@@ -1141,7 +1141,7 @@ export function buildConsignmentDealerDeclarationPDF({ entries, user }) {
   let y = drawProfessionalHeader(doc, {
     pageW: PW,
     title: 'Consignment — Trained Hunter Declaration',
-    subtitle: 'Wild Game — Regulation (EC) 853/2004  ·  ' + summary,
+    subtitle: 'Wild Game — Assimilated Regulation (EC) No 853/2004  ·  ' + summary,
     scope: scopeLine,
     scale: PT_SCALE,
   });
@@ -1250,8 +1250,7 @@ export function buildConsignmentDealerDeclarationPDF({ entries, user }) {
 
   // Declaration block — force to next page if we can't fit declaration +
   // signature together, so the signed page isn't orphaned from the manifest.
-  // Reserve ~140pt: the expanded 6-line declaration (behaviour-before-kill +
-  // contamination clauses + 853/2004 citation) plus signature + footer.
+  // Reserve ~140pt: declaration paragraph + signature + footer.
   if (y > PH - 140) { doc.addPage(); y = 40; }
   y += 16;
   doc.setDrawColor(200); doc.line(ML, y, PW - MR, y); y += 16;
@@ -1261,11 +1260,11 @@ export function buildConsignmentDealerDeclarationPDF({ entries, user }) {
   const declLines = doc.splitTextToSize(
     'I, the undersigned trained hunter, declare that I examined each carcass listed above ' +
     'and its viscera at the time of gralloching, and found no abnormalities other than any ' +
-    'recorded in the GRALLOCH / NOTES column for the carcass concerned. For each animal I ' +
-    'observed no abnormal behaviour before the kill, and I am not aware of any environmental ' +
-    'contamination affecting the areas where the animals were taken. The carcasses are being ' +
+    'recorded in the GRALLOCH / NOTES column for the carcass concerned. I further declare ' +
+    'that no abnormal behaviour was observed before the kill, and that I have no suspicion of ' +
+    'environmental contamination affecting the areas where the animals were taken. The carcasses are being ' +
     'transferred to the named game dealer as a single consignment. (Declaration made under ' +
-    'Regulation (EC) 853/2004, Annex III, Section IV, Chapter II.)',
+    'assimilated Regulation (EC) No 853/2004, Annex III, Section IV, Chapter II.)',
     UW
   );
   doc.text(declLines, ML, y); y += declLines.length * 12 + 10;

@@ -4,6 +4,268 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-18 — Diary stats: fix Season Statistics header overflow (Next season)
+
+Long **season `<select>`** options (`… · Next season`) made the native control size to the longest label; with **`flex-shrink:0`** the **h2 + select** row exceeded the **430px** column → horizontal scroll / white edge on Safari (same class of bug as `.list-top`). **`.stats-hdr-row`** + **`min-width:0`**, capped **`.season-pill-sel`**, **`#v-stats { overflow-x: hidden }`**.
+
+- `diary.html`, `diary.css`, `sw.js` `8.12 → 8.13`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary stats: next season visible in season pill (iOS / sync)
+
+**`#v-stats { overflow-x: hidden }`** could break **WebKit** native `<select>` so not all seasons appeared. Moved **`overflow-x: hidden`** to **`.stats-scroll`** only; **narrow screens** stack title + pill so the dropdown is **full width**. Option suffix **`· Next season` → `· Next`**. **`go(v-stats)`** / **`buildStats`** no longer sync stats from list when **`season-select` has no options** (avoids wiping the dropdown before `loadEntries` finishes).
+
+- `diary.css`, `diary.js`, `sw.js` `8.13 → 8.14`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Deploy bundle: `beta_v2/` for GitHub upload
+
+Added **`beta_v2/`** — same minimal static bundle as `betav2/`, produced by **`node scripts/build-betav2.mjs beta_v2`** (optional output dir; default remains `betav2`). Includes `beta_v2/README.md` for standalone repo / Pages. `scripts/build-betav2.mjs` — CLI out dir.
+
+---
+
+## 2026-04-18 — Main site + diary: reverse-geocode label priority
+
+`primaryPlaceFromAddress` previously preferred **village** over **town**, so Nominatim pairs such as Solihull + Hampton in Arden could show the village. Order is now **town/city/municipality before village**, except when `town` matches a **merged UK admin-style** name (`… and …`, long string, or Borough/District/… keywords) — then **village** still wins (West Acre–style cases). `looksLikeUkMergedAdminPlaceName` in `app.js` and `diary.js`.
+
+- `app.js`, `diary.js`, `sw.js` `8.09 → 8.10`.
+- `betav2/` rebuilt.
+
+- **Follow-up:** Nominatim reverse now uses **`format=jsonv2`**, **`addressdetails=1`**, **`zoom=15`** (settlement-level match per Nominatim docs; default zoom 18 often resolves to road/building so `address.village` could be a wider parish). **`labelFromNominatimReverse`** prefers `address[addresstype]` when `addresstype` is place-like; merged-district strings still defer to `village`/`hamlet`/suburb when present (e.g. West Acre vs King’s Lynn and West Norfolk). `app.js`, `diary.js`, `sw.js` `8.10 → 8.11`, `betav2/` rebuilt.
+
+- **Audit (same day):** `nominatimFetch` in `diary.js` now sends the same **`Accept-Language`** / **`User-Agent`** headers as `app.js` Nominatim calls (policy-friendly, consistent `display_name` language). `sw.js` `8.11 → 8.12`, `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Privacy: partner logos — shorter third-party copy
+
+Removed same-origin / localhost / IP–user-agent detail from the Field Guide logo subsection; kept org names, host for image files, link-out policy, and trademark non-endorsement line.
+
+- `privacy.html`, `sw.js` `8.08 → 8.09`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Legal: privacy / terms — partner logos
+
+**Privacy Policy:** third-party section documents logo image requests to `firstlightdeer.co.uk` when using the Field Guide (including off-origin dev), and a short trademark / non-endorsement note for UKDTR, BDS, BASC.
+
+**Terms of Use:** section 9 extended — third-party trademarks, no affiliation or endorsement, no responsibility for linked sites.
+
+- `privacy.html`, `terms.html`, `sw.js` `8.07 → 8.08`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Field Guide: BDS, BASC, UKDTR partner logos
+
+Replaced inline SVG placeholders on the **UKDTR**, **British Deer Society**, and **BASC** cards with raster logos: `species/UKDTR_logo.JPG`, `species/bds_logo.jpg`, `species/basc_logo.png`. `betav2` build copies `species/` when present; `sw.js` precaches those paths.
+
+- `index.html`, `scripts/build-betav2.mjs`, `sw.js` `8.04 → 8.05`.
+- `betav2/` rebuilt (ensure the three files exist under `species/` locally or logos 404 until added).
+- UKDTR asset path aligned with live host (case-sensitive): `species/UKDTR_logo.JPG`; `sw.js` `8.05 → 8.06`.
+- Partner logos use absolute `https://firstlightdeer.co.uk/species/…` URLs so localhost dev loads the same assets; `sw.js` precache matches; `8.06 → 8.07`.
+
+---
+
+## 2026-04-18 — Main site: UK-only location — fix non-UK saved state
+
+`fl_state` restore did not validate UK bounds, so stale non-UK coordinates (e.g. abroad) could show **Legal to Shoot** with local solar times. **Invalid saved coords** are now dropped; **`updateBanner`** / **`showOutsideUKMessage`** clear `bannerState` and weather caches so the per-minute tick cannot resurrect a non-UK location.
+
+- `app.js` — `clearBannerStateLocation`, `initBanner` + `updateBanner` + `selectPreset` guards; `sw.js` `8.03 → 8.04`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Field Guide: Sika Best — trim copy trimmed
+
+Removed meat-chemistry “sweet amino acids” sentence and the “not unique to sika / suet” caveat; kept the practical line on milder trim in mince/burgers.
+
+- `index.html`, `sw.js` `8.02 → 8.03`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Field Guide: Sika venison & fat / mince (verified copy)
+
+**Best** venison block: expanded with biochemistry-aligned note (sweet-taste amino acids in meat science), practical use of mild trim in mince/burgers when fat is clean, and explicit caveat that **usable fat in mince is not unique to sika** (CWD etc.); pork/beef suet still common for venison mince.
+
+- `index.html` — Sika Venison Quality &rarr; Best; `sw.js` `8.01 → 8.02`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Cursor: Git commit/push workflow rule
+
+Agent rule **`git-commit-workflow.mdc`** (`alwaysApply`): after scoped code/doc edits, commit from repo root with a clear imperative message and push to `origin` when possible; never commit secrets; if git is unavailable in the environment, give copy-paste commands.
+
+- `.cursor/rules/git-commit-workflow.mdc` — new.
+
+---
+
+## 2026-04-18 — Syndicate: demote manager to member
+
+Manage sheet member list: **Demote to member** for other managers when there are **two or more** active managers (keeps at least one). Sole manager still shows **Only manager**. Your own row shows **Another manager can demote you** when a co-manager exists (RLS does not allow self-update from manager → member via the same policy path).
+
+- `diary.js` — `syndDemoteMember`, `data-fl-action="synd-demote-member"`; `sw.js` `8.00 → 8.01`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary: plan-ahead targets for next season (personal + syndicate)
+
+Season dropdown now includes the **next** Aug–Jul season (label **· Next season**) before 1 August so stalkers and syndicate managers can set **personal** `cull_targets` / ground targets and **syndicate** targets for the upcoming year. `openTargetsSheet` and the Stats plan card allow editing when `seasonAllowsTargetEditing` — current season **or** next season only; past seasons stay read-only.
+
+- `diary.js` — `getNextSeasonAfter`, `seasonAllowsTargetEditing`, `isPastSeasonForTargets`; `buildSeasonList`, `populateSeasonDropdown`, `renderPlanCard`, `openTargetsSheet`; `sw.js` `7.99 → 8.00`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary list: multi-select bar compact layout
+
+Select-mode bottom bar: actions use a **2×2 grid** (was `flex-wrap`, so long labels each took a full row and looked huge). Tighter padding/typography; consignment button label **Dealer PDF** with `title` + `aria-label` for the full meaning. List `padding-bottom` reduced slightly to match shorter bar.
+
+- `diary.css`, `diary.html`, `sw.js` `7.98 → 7.99`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary list: Newest/Oldest sort with All seasons
+
+Month section headers were always ordered **newest calendar month first**, so with **All seasons** selected, toggling **Oldest** only reordered rows inside each month while year/month blocks stayed newest-first — looking like only the “current” months moved. Month keys now follow `listSortAsc` (oldest months first when Oldest). **Newest** mode also applies an explicit date/time **descending** sort so order does not depend only on the query.
+
+- `diary.js` — `renderList`; `sw.js` `7.97 → 7.98`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary detail: show syndicate name
+
+Entry detail **When & where** card now includes a **Syndicate** row when `syndicate_id` is set, resolving the display name via the same membership list as the form (with fallback copy if the name cannot be loaded).
+
+- `diary.js` — `resolveSyndicateDisplayName`, `openDetail`; `sw.js` `7.96 → 7.97`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary Stats: Cull Map pins on first open
+
+Leaflet was initialising while the Stats layout was still settling, so the map sometimes had wrong pixel geometry until the user panned (or revisited Stats — the fast-path already called `invalidateSize` + `renderCullMapPins` after 150ms). After a full `buildStats`, schedule the same refit (~180ms) so pins/clusters appear on first open without interaction.
+
+- `diary.js` — `buildStats` map `setTimeout(0)` block; `sw.js` `7.95 → 7.96`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Field Guide (`index.html`): Chinese Water Deer UK population
+
+Distribution card updated: **3,000–4,000** replaced with **high tens of thousands** and a note that estimates vary widely (aligned with recent specialist commentary).
+
+- `index.html`, `sw.js` `7.94 → 7.95`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary: four new gralloch abnormality codes
+
+Extended `ABNORMALITY_OPTIONS` / `ABNORMALITY_LABEL_BY_CODE` (Supabase `abnormalities` TEXT[]): **jaundice**, **generalised oedema** (distinct from arthritic joints), **pre-existing wounds/injuries/fractures**, **gralloch contamination** (rumen/faecal). Environmental contamination left for the existing trained-hunter declaration wording, not duplicated as a chip.
+
+- `lib/fl-pure.mjs`, `diary.js`, `tests/fl-pure.test.mjs` (count 12 → 16), `sw.js` `7.93 → 7.94`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Legal copy: assimilated Regulation (EC) No 853/2004 (GB post-Brexit)
+
+User-facing references updated from “Regulation (EC) 853/2004” to **assimilated Regulation (EC) No 853/2004**, matching UK/FSA wording for GB (retained EU law as assimilated under the REUL framework). PDF subtitles, declaration footers, `terms.html`, and code comments adjusted.
+
+- `modules/pdf.mjs`, `terms.html`, `diary.js` (comments), `sw.js` `7.92 → 7.93`.
+- `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary PDF: trained hunter declaration — drop duplicate checklist
+
+Removed the **Before the kill and kill site** bullet block from per-carcass and consignment dealer PDFs; the signed declaration paragraph already states no abnormal behaviour before the kill and no suspicion of environmental contamination (Reg (EC) 853/2004).
+
+- `modules/pdf.mjs` — `buildGameDealerDeclarationPDF`, `buildConsignmentDealerDeclarationPDF`.
+- `sw.js` — `SW_VERSION` `7.91 → 7.92`.
+- `betav2/` — rebuilt.
+
+---
+
+## 2026-04-18 — Diary PDF: trained hunter checklist encoding (jsPDF)
+
+Checklist lines rendered as `&` between characters: **jsPDF** default fonts do not reliably encode **Unicode** (e.g. checkmark U+2713), and a raw **`&`** in the heading also broke text output. Replaced with **ASCII** `- ` bullets and **"Before the kill and kill site"** (no ampersand).
+
+- `modules/pdf.mjs` — gralloch + pre-kill checklist lines.
+- `sw.js` — `SW_VERSION` `7.90 → 7.91`.
+- `betav2/` — rebuilt.
+
+---
+
+## 2026-04-18 — Diary PDF: trained hunter checklist (behaviour + contamination)
+
+Per-carcass and consignment **Trained Hunter Declaration** PDFs now show explicit lines under **Before the kill & kill site:** — *No abnormal behaviour observed* and *No suspicion of environmental contamination at the kill site* — before the formal declaration sentence, and the sentence uses the same *no … observed* / *no suspicion of … contamination* wording (Reg (EC) 853/2004 Annex III reference unchanged).
+
+- `modules/pdf.mjs` — `buildGameDealerDeclarationPDF`, `buildConsignmentDealerDeclarationPDF`.
+- `sw.js` — `SW_VERSION` `7.89 → 7.90`.
+- `betav2/` — rebuilt via `node scripts/build-betav2.mjs`.
+
+---
+
+## 2026-04-18 — Field Guide: Sika rut calendar (activity forecast)
+
+Aligned `RUT_CALENDAR` Sika scores with credible UK guidance: **October** now peak (**30**), **November** trimmed to **15** (late rut / continuation). Comment cites Scotland Wild Deer Best Practice (peak rutting mid Sep–end Oct) and BDS regional variability.
+
+- `app.js` — `RUT_CALENDAR` months 10–11, third value (Sika).
+- `sw.js` — `SW_VERSION` `7.88 → 7.89`.
+- `betav2/` — rebuilt via `node scripts/build-betav2.mjs`.
+
+---
+
+## 2026-04-18 — Diary: Cull Map header stays visible when using Leaflet zoom (+/−)
+
+Stats view scroll (`.stats-scroll`) could jump when tapping Leaflet’s zoom buttons (focus / scroll anchoring), scrolling the **Cull Map** title row off-screen so fullscreen and Map/Satellite looked like they “vanished”. Mitigation: capture `scrollTop` on `pointerdown`/`touchstart` (capture) on the zoom control and restore it after `zoomend`; `overflow-anchor: none` on `.stats-scroll`; stack `.cullmap-head` / `.cullmap-filter` above `#cull-map-container` with `z-index` + opaque `background`.
+
+- `diary.js` — `attachCullMapStatsScrollLock()` in `initCullMap`.
+- `diary.css` — cull map stacking + `overflow-anchor` on stats scroll.
+- `sw.js` — `SW_VERSION` `7.86 → 7.87`.
+- `betav2/` — rebuilt via `node scripts/build-betav2.mjs`.
+
+**Follow-up (still repro):** Two extra causes: (1) **flex** — the title column had default `min-width: auto` with a long `#cullmap-sub` line, so `.cullmap-ctrl` could shrink to **zero width** on narrow viewports after reflow; fixed with `min-width: 0` / `flex: 1 1 0%` on the left column and `flex-shrink: 0` on `.cullmap-ctrl`, plus `overflow-wrap` on the subtitle. (2) **inline map height** — `initCullMap` forced `#cull-map-div` to **300px** while `#cull-map-container` is **248px**; removed the inline height so CSS `height: 100%` applies. (3) **Scroll lock** — `tabindex="-1"` on Leaflet zoom `<a>`s, `zoomstart` snapshot only if unset, restore **both** `.stats-scroll` and `window` scroll, delayed restores + `blur()` on zoom end.
+
+- `diary.js` / `diary.css` — as above; `sw.js` `7.87 → 7.88`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Diary: Mapbox token rotation
+
+- `diary.html` — `meta[name="fl-mapbox-token"]` updated to the new Mapbox public token (URL-restricted token in dashboard).
+- `sw.js` — `SW_VERSION` `7.85 → 7.86` so diary clients fetch the updated HTML.
+- `betav2/` — rebuilt via `node scripts/build-betav2.mjs`.
+
+---
+
+## 2026-04-18 — Preview: iPhone 17 Pro Max viewport frame for Cull Diary
+
+- `previews/iphone-17-pro-max-diary-preview.html` — wraps `diary.html` in a **440 × 956** CSS px frame (published logical resolution for iPhone 17 Pro Max). Notes in-page: diary `max-width: 430px` vs 440px viewport; real Safari has URL bar (shorter than full 956px). Open via local server if `file://` iframe is blocked.
+
+---
+
+## 2026-04-18 — Diary: list header flex overflow (looks “zoomed” vs focus-zoom)
+
+The **16px minimum on inputs/selects/textareas** only stops Safari’s **focus-triggered** viewport zoom — it does not change how the **diary list** looks before any field is focused. A separate issue: `.list-top` (title + stats) is a horizontal flex row with default `min-width: auto` on children, so on narrow phones the row could **wider than the viewport**, producing a **clipped right edge / horizontal pan** that reads like the page is zoomed. Mitigation: `min-width: 0` + `gap` on `.list-top`, `flex` on the title column, slightly tighter `.hs` padding, and a small `max-width: 380px` tweak for stat numerals.
+
+- `diary.css` — header row flex containment as above.
+- `sw.js` — `SW_VERSION` `7.84 → 7.85`.
+
+---
+
 ## 2026-04-18 — Diary: iOS Safari “zooms in” on field focus
 
 **Not** caused by `body { max-width: 430px }` — that only centres the diary column. **Mobile Safari** (iPhone / iPad) automatically zooms the visual viewport when the user focuses an `<input>`, `<select>`, or `<textarea>` whose computed **font-size is below 16px**, so every tap on a 12–14px field felt like the page jumping back to a zoomed state.
