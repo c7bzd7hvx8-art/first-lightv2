@@ -4,6 +4,12 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-18 — Git: snapshot before audit remediation
+
+Commit **`c65ff35`** on **`main`** — backup point before Claude audit fixes; branch **`backup/pre-audit-2026-04-18`** at the same commit. Pushed to **`origin`**. (`betav2.zip` left untracked — local artefact.)
+
+---
+
 ## 2026-04-18 — Diary stats: fix Season Statistics header overflow (Next season)
 
 Long **season `<select>`** options (`… · Next season`) made the native control size to the longest label; with **`flex-shrink:0`** the **h2 + select** row exceeded the **430px** column → horizontal scroll / white edge on Safari (same class of bug as `.list-top`). **`.stats-hdr-row`** + **`min-width:0`**, capped **`.season-pill-sel`**, **`#v-stats { overflow-x: hidden }`**.
