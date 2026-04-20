@@ -4,6 +4,14 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-20 — Diary: load larder inspection (abnormalities) from Supabase
+
+**`diary.js`** — `CULL_ENTRY_LIST_COLUMNS` / `_LEGACY` omitted `abnormalities` and `abnormalities_other`, so list/detail/edit never received saved values after `loadEntries()`. Added both columns to the select lists and to the export-modal full-history query.
+
+- `sw.js` `8.43 → 8.44`; `betav2/` + `beta_v2/` rebuilt; `live_upload_v2/diary.js` + `sw.js` copied.
+
+---
+
 ## 2026-04-20 — GoatCounter for public site traffic
 
 **`index.html`**, **`diary.html`**, **`deerschool.html`**, **`privacy.html`**, **`terms.html`**, **`diary-guide.html`** — Added GoatCounter (`gc.zgo.at` + `firstlightdeer.goatcounter.com`) before `</body>` with **`https://`** script URL. **CSP** updated on each page that has a policy (`script-src` / `connect-src`).
