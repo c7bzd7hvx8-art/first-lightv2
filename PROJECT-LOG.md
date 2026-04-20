@@ -4,6 +4,16 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-20 — GoatCounter for public site traffic
+
+**`index.html`**, **`diary.html`**, **`deerschool.html`**, **`privacy.html`**, **`terms.html`**, **`diary-guide.html`** — Added GoatCounter (`gc.zgo.at` + `firstlightdeer.goatcounter.com`) before `</body>` with **`https://`** script URL. **CSP** updated on each page that has a policy (`script-src` / `connect-src`).
+
+**`privacy.html`** — Summary + “What we collect” + new **Third-party** block for GoatCounter; last updated **20 April 2026**.
+
+- `sw.js` `8.42 → 8.43`; `betav2/` + `beta_v2/` (+ `live_upload_v2/` HTML) rebuilt or copied to match.
+
+---
+
 ## 2026-04-20 — Ignore `betav2.zip` in Git
 
 **`.gitignore`** — Added `betav2.zip` so local deploy zip bundles are not committed. **`betav2.zip`** — Removed from the index (`git rm --cached`); file may remain on disk.
