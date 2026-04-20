@@ -4,6 +4,12 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-20 — Ignore `betav2.zip` in Git
+
+**`.gitignore`** — Added `betav2.zip` so local deploy zip bundles are not committed. **`betav2.zip`** — Removed from the index (`git rm --cached`); file may remain on disk.
+
+---
+
 ## 2026-04-20 — PDF exports: strip ephemeral `blob:` / long `data:image` from text
 
 **`modules/pdf.mjs`** — Added `pdfSafeText()` and applied it to user-supplied fields in diary, season summary, larder, syndicate, declaration, and consignment PDFs so **browser `blob:` URLs** (e.g. from previews) and **pasted base64 images** do not appear as junk when sharing exports (e.g. WhatsApp).

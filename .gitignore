@@ -27,6 +27,9 @@ Thumbs.db
 *.secrets.json
 service-role-*.json
 
+# Deploy zip (regenerated locally; do not commit binary bundles)
+betav2.zip
+
 # Build artefacts — project is a static site; these would only appear
 # if someone later introduces a bundler.
 dist/
