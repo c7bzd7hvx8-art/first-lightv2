@@ -24,6 +24,7 @@ import {
   fmtEntryDateLong,
   fmtEntryTimeShort,
   hasValue,
+  pdfSafeText,
   syndicateFileSlug,
   drawTableHeader,
   plural,
@@ -139,6 +140,20 @@ test('hasValue treats 0, false, and non-empty strings as present', () => {
   assert.equal(hasValue(false), true);
   assert.equal(hasValue('x'), true);
   assert.equal(hasValue([]), true);
+});
+
+// ── pdfSafeText ─────────────────────────────────────────────────────────────
+test('pdfSafeText strips blob URLs and normalises whitespace', () => {
+  assert.equal(pdfSafeText(''), '');
+  assert.equal(pdfSafeText(null), '');
+  assert.equal(
+    pdfSafeText('Seen at blob:https://x.example/uuid and later'),
+    'Seen at and later'
+  );
+  assert.equal(
+    pdfSafeText('data:image/png;base64,' + 'A'.repeat(250)),
+    '[image data omitted]'
+  );
 });
 
 // ── PDF builders (with jspdf stub) ─────────────────────────────────────────

@@ -4,6 +4,226 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-20 — PDF exports: strip ephemeral `blob:` / long `data:image` from text
+
+**`modules/pdf.mjs`** — Added `pdfSafeText()` and applied it to user-supplied fields in diary, season summary, larder, syndicate, declaration, and consignment PDFs so **browser `blob:` URLs** (e.g. from previews) and **pasted base64 images** do not appear as junk when sharing exports (e.g. WhatsApp).
+
+**`tests/pdf.test.mjs`** — Unit test for `pdfSafeText`.
+
+- `modules/pdf.mjs`, `tests/pdf.test.mjs`, `sw.js` `8.41 → 8.42`; `betav2/` + `beta_v2/` rebuilt.
+
+---
+
+## 2026-04-20 — “What’s new” Diary copy update + sync `beta_v2`
+
+**`index.html`** — Updated the What’s new Diary bullet to match current export set: **CSV, PDF, Summary, Larder Book** (instead of the old “season summaries as CSV or PDF” wording).
+
+**Build sync** — Rebuilt both deploy folders so legacy `beta_v2` stays in lock-step with current source (`betav2` + `beta_v2`).
+
+- `index.html`, `sw.js` `8.40 → 8.41`; `betav2/` and `beta_v2/` rebuilt.
+
+---
+
+## 2026-04-20 — Rotate OS Maps API key in diary
+
+**`diary.js`** — Replaced the OS Maps raster key used for `api.os.uk` ZXY Road tiles with the newly rotated project key.
+
+- `diary.js`, `sw.js` `8.39 → 8.40`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — Diary map tiles: OS-first default, Mapbox satellite only
+
+**`diary.js`** — Switched map tile strategy to reduce Mapbox quota usage: default **Map** layer now uses **OS Road**; **Satellite** uses Mapbox when token exists (falls back to Esri in legacy mode). Added per-URL tile options so Mapbox 512/zoomOffset settings apply only to Mapbox URLs. Updated local map usage warning thresholds/messages from old **50k** assumptions to **200k** free-tier equivalents. Adjusted tile-error fallback trigger so hybrid mode only falls back from Mapbox when **Satellite** is the active layer.
+
+- `diary.js`, `sw.js` `8.38 → 8.39`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — “What’s new” modal: tidy row alignment/chip rhythm
+
+**`index.html`** — Smoothed the visual rhythm in the What’s new modal list: increased row spacing/gap and normalized all category chips (`Diary/School/...`) to a consistent minimum width with centered labels so description text starts on the same vertical line across rows.
+
+- `index.html`, `sw.js` `8.37 → 8.38`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — “What’s new”: clarify Field Guide is updated
+
+**`index.html`** — Updated the What’s new modal **Guide** bullet from “Field Guide — …” to **“Updated Field Guide — …”** so it reflects that a field guide already existed in v1 and this is an enhancement.
+
+- `index.html`, `sw.js` `8.36 → 8.37`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — “What’s new”: remove Deer School question count
+
+**`index.html`** — Updated the Deer School bullet in the **What’s new** modal to remove the explicit numeric question count, keeping feature wording evergreen as the bank changes.
+
+- `index.html`, `sw.js` `8.35 → 8.36`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — Home header: restore original “Free forever” styling
+
+**`index.html`** — Kept the plain **“Free forever”** label but matched the original header-link visual style exactly (same inline-flex, gap, font size, colour, and letter-spacing as before), without reintroducing support wording, coffee icon, or a clickable link.
+
+- `index.html`, `sw.js` `8.34 → 8.35`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — Home header: keep “Free forever” only
+
+**`index.html`** — Added back a plain **“Free forever”** label in the header row, without the support wording, coffee icon, or header coffee link. Keeps the row balanced while retaining the no-support-callout decision.
+
+- `index.html`, `sw.js` `8.33 → 8.34`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — Home header: remove support strapline
+
+**`index.html`** — Removed the header line/link **“Free forever · support the app ☕”** (`#coffee-header-link`) from the top card and right-aligned the remaining header action row so the **Cull Diary** button sits cleanly on its own.
+
+- `index.html`, `sw.js` `8.32 → 8.33`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — Privacy wording softened (Cull Diary data statement)
+
+**`privacy.html`** — Updated the short-version summary to remove “not anonymous” phrasing and use clearer trust-forward wording: core features do not collect personal data; Cull Diary records are stored securely in Supabase under the user account, protected by access controls; only the user can access personal diary data except entries deliberately shared with a syndicate.
+
+- `privacy.html`, `sw.js` `8.31 → 8.32`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-20 — Privacy/Terms consistency fixes (data + licence wording)
+
+**`privacy.html`** — Removed contradictory wording: clarified core features vs optional Cull Diary processing; explicitly states Cull Diary data is **not anonymous** and syndicate-shared entries are visible to relevant members. Updated “Changes to this policy” copy to avoid “we collect no personal data” overstatement. Fixed copyright/licence paragraph so users can share generated declarations/reports for lawful workflows while still prohibiting reuse of app code/content/templates in competing products.
+
+**`terms.html`** — Export backup wording updated to match current outputs (CSV, PDF, Summary, Larder). Reworded restriction from “generated PDFs” to PDF templates/layouts, plus explicit clarity line that sharing generated declarations/reports in lawful workflow is permitted.
+
+- `privacy.html`, `terms.html`, `sw.js` `8.30 → 8.31`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Cull Diary: remove JSON export (UI + guide + privacy)
+
+**`diary.html`** — Removed **JSON** button from **My diary exports**. **`diary.js`** — Removed **`export-full-json`** handler, **`exportFullDiaryJson`**, and **`triggerJsonDownload`**. **`diary.css`** — Removed **`.exp-json`**. **`diary-guide.html`** — Mock and copy now **four** exports (CSV → PDF → Summary → Larder); JSON paragraphs/tip removed; header note and step 9 / syndicate tips updated. **`privacy.html`** — **Portability** bullet describes CSV / PDF / Summary / Larder instead of JSON backup.
+
+- `diary.html`, `diary.js`, `diary.css`, `diary-guide.html`, `privacy.html`, `sw.js` `8.29 → 8.30`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Cull Diary guide: step 10 “My diary exports” mock matches app
+
+**`diary-guide.html`** — Step **10** — Replaced stacked full-width buttons with **`diary.html` / `diary.css` layout**: **`.exp-block`–style** card, **title + subtitle**, **one horizontal row** of five **`.exp-btn`–coloured** tiles (CSV green, JSON grey, PDF blue, Summary moss gradient + border, Larder gold gradient + border), **`exp-block-foot`** note. Copy updated for horizontal row and **Entries matching selection**. Added **`--blue`**. Removed obsolete **`.m-export-btn`** styles.
+
+- `diary-guide.html`, `sw.js` `8.28 → 8.29`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-18 — Cull Diary guide: step 8 season targets (HTML mocks)
+
+**`diary-guide.html`** — Step **8** — **HTML/CSS mocks** for **Season Plan** card, **Set targets** sheet (**Season total** + **By ground**), and **Overview / ground** chips; **TOC** **08a–08d** anchors. Clarifies mocks vs PNG screenshots; trims unused plan-card-only CSS.
+
+- `diary-guide.html`, `sw.js` `8.27 → 8.28`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Cull Diary guide: JSON path + syndicate walkthrough mocks
+
+**`diary-guide.html`** — **Header** note: guide tracks in-repo **`diary.html`**; cache note for missing controls. **Step 10** — tip: **JSON** = **Stats → My diary exports → JSON** (signed-in). **Step 13** replaced with **13a–13f** TOC anchors: locate card, create sheet mock, manage/invites mock, join, ground/attribution, **Team** export modal mock; CSS for syndicate mocks. Clarifies HTML mocks vs PNG screenshots.
+
+- `diary-guide.html`, `sw.js` `8.26 → 8.27`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Cull Diary guide: hunter declarations & consignments (10a)
+
+**`diary-guide.html`** — New **TOC** link **10a** → **`#s10-declarations`**. Section under step **10**: trained hunter **Game dealer PDF** (single entry) vs **Dealer PDF** consignment (Select mode), **Reg. (EC) No 853/2004** context, left-on-hill exclusion. **Step 5** copy + mock (**2×2** actions incl. **Game dealer PDF**); steps **2** & **9** cross-link to 10a.
+
+- `diary-guide.html`, `sw.js` `8.25 → 8.26`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Cull Diary guide: Exporting Data (step 10) aligned with app
+
+**`diary-guide.html`** — Step **10** rewritten to match **Stats → My diary exports**: five buttons (**CSV**, **JSON**, **PDF**, **Summary**, **Larder Book**) with colours like **`diary.css`**. Explains shared **season + ground** sheet for CSV/PDF/Larder vs separate **Summary** sheet vs immediate **JSON**; **Larder** / left-on-hill; **detail** PDF + **Game dealer PDF**; **Select** bulk CSV / consignment **Dealer PDF** / delete; syndicates → step 13; offline toast tip.
+
+- `diary-guide.html`, `sw.js` `8.24 → 8.25`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Cull Diary guide: bottom-nav SVGs match `diary.html`
+
+**`diary-guide.html`** step **2** mock — **Diary / Add Entry / Stats** tab icons use the same **22×22** inline SVGs as **`diary.html`** `#main-nav` (book + gold compass on Diary). **`.m-nav-ico svg`** size **20 → 22** px.
+
+- `diary-guide.html`, `sw.js` `8.23 → 8.24`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Cull Diary guide: Diary view mock matches live UI
+
+**`diary-guide.html`** step **2** — replaced outdated mock (2×2 stats + four chips + nav inside one block) with layout aligned to **`diary.html`**: First Light logo row, title + **3-column** `hstats`, season row (dropdown + guide + Stats shortcut), **cream** `filter-bar` with **All + six species** (incl. Sika, Muntjac, CWD; **Roe Deer** wording), Quick/+ hint, bottom nav. Copy now mentions search, ground filter, sort, Select, offline banner/badge.
+
+- `diary-guide.html`, `sw.js` `8.22 → 8.23`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Field Guide: revert Option A trim (Rifle / Calibres)
+
+Restored **`index.html`** **Rifle, Calibres &amp; Optic Setup** to the **pre–Option A** full text: **16** numbered cards + intro — optic **A–D** boxes, separate **trigger**, **positions**, **contact**, **NPA** (amber + note), **pre/post-shot**, **common mistakes**, **field kit**, **wind**; **E&amp;W** and **Scotland** law cards; per-calibre rows; **holdover** table plus **Holdover / Dial / Wind** rows and **.222/.223** box. Subtitle **Law, zero, holdover, NPA &amp; field discipline**; intro card-note references Stalking Safety + sections below.
+
+- `index.html`, `sw.js` `8.21 → 8.22`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Field Guide: Rifle / Calibres section — Option A trim
+
+Merged **Trigger + contact**, **Positions + kit** (+ wind/judgement line); optic **A–D** → bullet list; **NPA** one card; removed **Common mistakes**, **Field kit**, **Wind** as separate cards; **E&amp;W + Scotland** law in one card; **Typical calibres** → short paragraph; **Holdover** — keep table, drop extra holdover/dial/wind rows and long .223 box. **11** cards + intro vs **16** + intro. Subtitle **Condensed: rifle, law, zero &amp; holdover**. *(Superseded by revert above.)*
+
+- `index.html`, `sw.js` `8.20 → 8.21`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Field Guide: rename category to “Rifle, Calibres & Optic Setup”
+
+**`index.html`** — `fg-cat-title` + Field Guide intro / changelog copy; **`sw.js`** `8.19 → 8.20`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Field Guide: merge Legal Calibres into Rifle & optic setup
+
+**Legal Calibres** standalone `fg-category` removed; E&amp;W + Scotland minimums, common calibres list, and **Holdover &amp; ballistics** table moved into **Rifle &amp; optic setup** as sections **13–16**. Subtitle **Law, zero, holdover, NPA &amp; field discipline**. Field Guide intro/changelog copy deduped (“incl. UK law &amp; holdover”).
+
+- `index.html`, `sw.js` `8.18 → 8.19`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Field Guide: Rifle & optic setup section
+
+New collapsible **`fg-category`** in **`index.html`** (after **Stalking Safety**, before **Deer Identification**): baseline rifle/ammo checks, optic setup (eye relief, reticle, parallax), fit/cheek weld, trigger, zero confirmation, positions, NPA, pre/post-shot, common errors, field kit, wind judgement. Uses **`LegalCalibres`** category icon. Intro banner + changelog **Guide** bullet mention rifle setup.
+
+- `index.html`, `sw.js` `8.17 → 8.18`; `betav2/` rebuilt.
+
+---
+
+## 2026-04-19 — Claude audit remediation — marked complete
+
+**Status:** **Closed.** The Claude-originated remediation work is **accepted as done**: sprints **A1** (error URL / `app_errors`), **A2** (syndicate RLS documented + `diary.js` policy pointers; in-repo `supabase-audit-rls-snapshot.json`), **A3** (weather nulls), **A6** (Mapbox public token URL restrictions — dashboard), **A7** (stats guards / `esc`), **B7** (manifest `privacy_policy`). Launch-scorecard items shipped in-repo: **CSP** on `privacy.html` / `terms.html` / `deerschool.html`, **full JSON** portability export. **`scripts/SUPABASE-RECORD.md` — Pending** list has no open checkboxes for this scope.
+
+**Not audit blockers (optional backlog):** one-time **non-manager RLS** check in browser DevTools; optional **Supabase RPC** to cap syndicate invite `max_uses` / expiry server-side; wider product polish (CSV import, Season Summary columns, marketing copy) tracked separately from this audit closure.
+
+---
+
+## 2026-04-18 — Public launch prep: CSP on static pages + full JSON export (audit backlog)
+
+**Launch-readiness scorecard** items **#5** (CSP on `privacy.html` / `deerschool.html`) and **#8** (full JSON portability): **`privacy.html`**, **`terms.html`** — meta CSP (no scripts, Google Fonts + inline styles). **`deerschool.html`** — CSP allowing local `questions.js` / `deerschool.js` + fonts. **`diary.js`** — `exportFullDiaryJson()` + `triggerJsonDownload` → `cull_entries` (`select *`), `grounds`, `cull_targets`, `ground_targets`, `syndicate_members` for the signed-in user; **`diary.html`** JSON button; **`diary.css`** `.exp-json`. **`privacy.html`** / **`diary-guide.html`** — portability copy updated.
+
+- `sw.js` `8.16 → 8.17`; `betav2/` rebuilt.
+
+---
+
 ## 2026-04-18 — Audit sprint 1: error URL, weather nulls, stats guards, manifest privacy
 
 **A1** — `modules/error-logger.mjs`: **`safeUrlForLog()`** strips `#hash` and sensitive query params (`syndicate_invite`, OAuth tokens, etc.) before `app_errors.url`. **`tests/error-logger.test.mjs`** — new case.
@@ -14,9 +234,18 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 **B7** — `manifest.json`, `manifest-diary.json`: **`privacy_policy`** → `…/privacy.html`.
 
-**A6** (ops): Mapbox **`pk`** token URL restrictions — **Mapbox dashboard**, not code.
+**A6** (ops): **Done** — Mapbox **`pk`** token **URL restrictions** configured in the **Mapbox dashboard** (allowed URLs / referrers for First Light); no application code change.
 
 - `sw.js` `8.14 → 8.15`; `betav2/` + `beta_v2/` rebuilt.
+
+---
+
+## 2026-04-18 — Audit sprint 2: syndicate RLS documentation (A2)
+
+No DB migration: **in-repo** `scripts/supabase-audit-rls-snapshot.json` (2026-04-12) already lists manager-scoped policies for `syndicates`, `syndicate_members`, `syndicate_invites`, `syndicate_targets`, `syndicate_member_allocations`. **`diary.js`** — section comment + **`// RLS: …`** before each direct `sb.from('syndicate…')` mutation; **`scripts/SUPABASE-RECORD.md`** changelog + optional non-manager DevTools test. Invite **max_uses** still client-defaulted (future RPC noted in comment).
+
+- `diary.js`, `scripts/SUPABASE-RECORD.md`, `sw.js` `8.15 → 8.16`.
+- `betav2/` rebuilt.
 
 ---
 

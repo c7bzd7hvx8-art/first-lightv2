@@ -5224,7 +5224,7 @@ function renderWeatherStrip(e) {
 // ══════════════════════════════════════════════════════════════
 // MAP FEATURE — Pin Drop + Cull Map
 // ══════════════════════════════════════════════════════════════
-var OS_KEY = 'Q4CgPxeA5EHM17KPG6y78arVIekRHGsv';
+var OS_KEY = 'IRnioue2Sizx0EOCvtix6EJ8BxdlNoNd';
 var MAPBOX_TOKEN = (function() {
   try {
     // Prefer token set on window (if allowed by CSP), else read meta tag.
@@ -5243,7 +5243,7 @@ var TILE_SAT_ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_
 var TILE_OS_STD = 'https://api.os.uk/maps/raster/v1/zxy/Road_3857/{z}/{x}/{y}.png?key=' + OS_KEY;
 var TILE_MB_STD = MAPBOX_TOKEN ? ('https://api.mapbox.com/styles/v1/' + MAPBOX_STYLE_STD + '/tiles/512/{z}/{x}/{y}@2x?access_token=' + encodeURIComponent(MAPBOX_TOKEN)) : '';
 var TILE_MB_SAT = MAPBOX_TOKEN ? ('https://api.mapbox.com/styles/v1/' + MAPBOX_STYLE_SAT + '/tiles/512/{z}/{x}/{y}@2x?access_token=' + encodeURIComponent(MAPBOX_TOKEN)) : '';
-var mapProvider = MAPBOX_TOKEN ? 'mapbox' : 'legacy';
+var mapProvider = MAPBOX_TOKEN ? 'hybrid' : 'legacy';
 var _mapboxFallbackDone = false;
 
 var SP_COLORS = {
@@ -5267,10 +5267,18 @@ function legacyTileOpts() {
 }
 
 function mapProviderTileUrls() {
+  // Quota-safe default: OS map tiles for "Map", Mapbox only for "Satellite".
+  if (mapProvider === 'hybrid' && TILE_MB_SAT) {
+    return { std: TILE_OS_STD, sat: TILE_MB_SAT, mode: 'hybrid' };
+  }
   if (mapProvider === 'mapbox' && TILE_MB_STD && TILE_MB_SAT) {
     return { std: TILE_MB_STD, sat: TILE_MB_SAT, mode: 'mapbox' };
   }
   return { std: TILE_OS_STD, sat: TILE_SAT_ESRI, mode: 'legacy' };
+}
+
+function tileOptsForUrl(url) {
+  return (url && url.indexOf('api.mapbox.com/styles/v1/') !== -1) ? mapboxTileOpts() : legacyTileOpts();
 }
 
 function bumpMapLoadEstimate(context) {
@@ -5283,19 +5291,19 @@ function bumpMapLoadEstimate(context) {
     localStorage.setItem(key, String(n));
     var warn70 = 'fl_map_load_warn70_' + monthKey;
     var warn90 = 'fl_map_load_warn90_' + monthKey;
-    if (n >= 35000 && !localStorage.getItem(warn70)) {
+    if (n >= 140000 && !localStorage.getItem(warn70)) {
       localStorage.setItem(warn70, '1');
-      console.warn('[Map usage estimate] ~70% of 50k Mapbox free-tier reached on this browser (' + context + ').');
+      console.warn('[Map usage estimate] ~70% of 200k Mapbox free-tier reached on this browser (' + context + ').');
     }
-    if (n >= 45000 && !localStorage.getItem(warn90)) {
+    if (n >= 180000 && !localStorage.getItem(warn90)) {
       localStorage.setItem(warn90, '1');
-      console.warn('[Map usage estimate] ~90% of 50k Mapbox free-tier reached on this browser (' + context + ').');
+      console.warn('[Map usage estimate] ~90% of 200k Mapbox free-tier reached on this browser (' + context + ').');
     }
   } catch (_) { /* ignore storage errors */ }
 }
 
 function maybeFallbackFromMapbox(reason) {
-  if (mapProvider !== 'mapbox' || _mapboxFallbackDone) return;
+  if ((mapProvider !== 'mapbox' && mapProvider !== 'hybrid') || _mapboxFallbackDone) return;
   if (!navigator.onLine) return;
   _mapboxFallbackDone = true;
   mapProvider = 'legacy';
@@ -5382,7 +5390,10 @@ function attachPinMapTileErrorHandlers() {
   function bump() {
     _pinMapTileErrorCount++;
     refreshPinMapFallbackBanner();
-    if (_pinMapTileErrorCount >= 6) maybeFallbackFromMapbox('tile errors');
+    var satActive = !!(pinMap && pinSatLayer && pinMap.hasLayer(pinSatLayer));
+    if (_pinMapTileErrorCount >= 6 && (mapProvider === 'mapbox' || (mapProvider === 'hybrid' && satActive))) {
+      maybeFallbackFromMapbox('tile errors');
+    }
   }
   pinMapLayer.on('tileerror', bump);
   pinSatLayer.on('tileerror', bump);
@@ -5393,7 +5404,10 @@ function attachCullMapTileErrorHandlers() {
   cullMapLayer._flTileErrBound = true;
   function bump() {
     _cullMapTileErrorCount++;
-    if (_cullMapTileErrorCount >= 6) maybeFallbackFromMapbox('tile errors');
+    var satActive = !!(cullMap && cullSatLayer && cullMap.hasLayer(cullSatLayer));
+    if (_cullMapTileErrorCount >= 6 && (mapProvider === 'mapbox' || (mapProvider === 'hybrid' && satActive))) {
+      maybeFallbackFromMapbox('tile errors');
+    }
   }
   cullMapLayer.on('tileerror', bump);
   cullSatLayer.on('tileerror', bump);
@@ -5432,9 +5446,8 @@ function openPinDrop() {
       .setView([startLat, startLng], 14);
 
     var pinTiles = mapProviderTileUrls();
-    var pinOpts = pinTiles.mode === 'mapbox' ? mapboxTileOpts() : legacyTileOpts();
-    pinMapLayer = L.tileLayer(pinTiles.std, pinOpts).addTo(pinMap);
-    pinSatLayer = L.tileLayer(pinTiles.sat, pinOpts);
+    pinMapLayer = L.tileLayer(pinTiles.std, tileOptsForUrl(pinTiles.std)).addTo(pinMap);
+    pinSatLayer = L.tileLayer(pinTiles.sat, tileOptsForUrl(pinTiles.sat));
     attachPinMapTileErrorHandlers();
     bumpMapLoadEstimate('pin-map');
 
@@ -5543,9 +5556,8 @@ function initCullMap() {
     .setView([54.0, -2.0], 6); // UK overview
 
   var cullTiles = mapProviderTileUrls();
-  var cullOpts = cullTiles.mode === 'mapbox' ? mapboxTileOpts() : legacyTileOpts();
-  cullMapLayer = L.tileLayer(cullTiles.std, cullOpts).addTo(cullMap);
-  cullSatLayer = L.tileLayer(cullTiles.sat, cullOpts);
+  cullMapLayer = L.tileLayer(cullTiles.std, tileOptsForUrl(cullTiles.std)).addTo(cullMap);
+  cullSatLayer = L.tileLayer(cullTiles.sat, tileOptsForUrl(cullTiles.sat));
   attachCullMapTileErrorHandlers();
   bumpMapLoadEstimate('cull-map');
 
@@ -7670,6 +7682,12 @@ async function loadSyndicateAllocGrid(syndicateId, season, memberUserId) {
   enhanceKeyboardClickables(grid);
 }
 
+// ── Syndicate writes (security = Postgres RLS, not this UI) ─────────────────
+// Full policy definitions: scripts/syndicate-schema.sql (+ syndicate-rls-self-leave-hardening.sql).
+// Frozen inventory: scripts/supabase-audit-rls-snapshot.json (_meta.captured 2026-04-12).
+// If policies change, refresh the snapshot per scripts/SUPABASE-RECORD.md.
+// Manual abuse test (non-manager): Supabase client .update({ role: 'manager' }) must fail with RLS.
+
 async function saveSyndicateTargets() {
   if (!sb || !currentUser || !syndicateEditingId) return;
   var o = readSyndicateSteppers('syntt');
@@ -7678,6 +7696,7 @@ async function saveSyndicateTargets() {
     rows.push({ syndicate_id: syndicateEditingId, season: currentSeason, species: sp.name, sex: 'm', target: o[sp.name + '-m'] || 0 });
     rows.push({ syndicate_id: syndicateEditingId, season: currentSeason, species: sp.name, sex: 'f', target: o[sp.name + '-f'] || 0 });
   });
+  // RLS: syndicate_targets_all_manager (WITH CHECK is_syndicate_manager(syndicate_id))
   var r = await sb.from('syndicate_targets').upsert(rows, { onConflict: 'syndicate_id,season,species,sex' });
   if (r.error) { showToast('⚠️ ' + (r.error.message || 'Save failed')); return; }
   showToast('✅ Targets saved');
@@ -7707,6 +7726,7 @@ async function saveSyndicateAlloc() {
       allocation: o[sp.name + '-f'] || 0
     });
   });
+  // RLS: syndicate_alloc_all_manager
   var r = await sb.from('syndicate_member_allocations').upsert(rows, { onConflict: 'syndicate_id,user_id,season,species,sex' });
   if (r.error) { showToast('⚠️ ' + (r.error.message || 'Save failed')); return; }
   showToast('✅ Allocations saved');
@@ -7718,6 +7738,7 @@ async function syndGenerateInvite() {
   if (!sb || !syndicateEditingId) return;
   var tok = syndicateRandomToken();
   var exp = new Date(Date.now() + SYNDICATE_INVITE_DEFAULT_DAYS * 864e5).toISOString();
+  // RLS: syndicate_invites_insert_manager (manager + created_by = auth.uid()). max_uses/expiry are client defaults; stricter server caps = optional RPC later.
   var r = await sb.from('syndicate_invites').insert({
     syndicate_id: syndicateEditingId,
     token: tok,
@@ -7758,6 +7779,7 @@ async function syndRevokeInvite(inviteId) {
     action: 'Revoke invite',
     tone: 'warn'
   }))) return;
+  // RLS: syndicate_invites_delete_manager
   var r = await sb.from('syndicate_invites')
     .delete()
     .eq('id', inviteId)
@@ -7806,6 +7828,7 @@ async function syndPromoteMember(userId) {
     action: 'Promote to manager',
     tone: 'warn'
   }))) return;
+  // RLS: syndicate_members_update_manager
   var r = await sb.from('syndicate_members')
     .update({ role: 'manager' })
     .eq('syndicate_id', syndicateEditingId)
@@ -7839,6 +7862,7 @@ async function syndDemoteMember(userId) {
     action: 'Demote to member',
     tone: 'warn'
   }))) return;
+  // RLS: syndicate_members_update_manager
   var r = await sb.from('syndicate_members')
     .update({ role: 'member' })
     .eq('syndicate_id', syndicateEditingId)
@@ -7863,6 +7887,7 @@ async function syndDelete() {
     action: 'Delete syndicate',
     tone: 'danger'
   }))) return;
+  // RLS: syndicates_delete_manager
   var r = await sb.from('syndicates').delete().eq('id', syndicateEditingId);
   if (r.error) { showToast('⚠️ ' + (r.error.message || 'Delete failed')); return; }
   showToast('🗑 Syndicate deleted');
@@ -7883,6 +7908,7 @@ async function syndRemoveMember(userId) {
     action: 'Remove member',
     tone: 'warn'
   }))) return;
+  // RLS: syndicate_members_update_manager (manager removes another member)
   var r = await sb.from('syndicate_members').update({ status: 'left' }).eq('syndicate_id', syndicateEditingId).eq('user_id', userId);
   if (r.error) {
     showToast('⚠️ ' + (r.error.message || 'Could not remove member'));
