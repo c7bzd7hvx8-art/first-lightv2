@@ -151,6 +151,14 @@ test('pdfSafeText strips blob URLs and normalises whitespace', () => {
     'Seen at and later'
   );
   assert.equal(
+    pdfSafeText('Seen at blob: https://x.example/uuid and later'),
+    'Seen at and later'
+  );
+  assert.equal(
+    pdfSafeText('Seen at blob:\nhttps://x.example/uuid and later'),
+    'Seen at and later'
+  );
+  assert.equal(
     pdfSafeText('data:image/png;base64,' + 'A'.repeat(250)),
     '[image data omitted]'
   );

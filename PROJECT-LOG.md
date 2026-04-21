@@ -4,6 +4,16 @@ This file is a **durable summary** of work discussed and implemented in Cursor. 
 
 ---
 
+## 2026-04-20 — PDF/CSV exports: stronger blob URL stripping
+
+**`modules/pdf.mjs`** — `pdfSafeText()` now removes `blob:` URLs even when there is **whitespace or a line break** before `https://` (common in wrapped notes). Second pass strips remaining `blob:…` opaque fragments. Simple diary PDF title line runs **species** through `pdfSafeText`.
+
+**`diary.js`** — CSV `csvField()` passes values through **`pdfSafeText`** so shared CSVs do not carry blob preview junk.
+
+- `sw.js` `8.44 → 8.45`; `betav2/` + `beta_v2/` + `live_upload_v2/` rebuilt.
+
+---
+
 ## 2026-04-20 — Diary: load larder inspection (abnormalities) from Supabase
 
 **`diary.js`** — `CULL_ENTRY_LIST_COLUMNS` / `_LEGACY` omitted `abnormalities` and `abnormalities_other`, so list/detail/edit never received saved values after `loadEntries()`. Added both columns to the select lists and to the export-modal full-history query.
