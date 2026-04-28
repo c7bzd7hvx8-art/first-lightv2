@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' https://cdnjs.cloudflare.com; connect-src 'self' https://api.open-meteo.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; worker-src 'self';">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Ballistic Calculator — First Light</title>
+<meta name="description" content="UK deer stalking ballistic calculator: factory ammunition library, atmospheric correction, statutory energy thresholds, dope card export.">
+<meta name="theme-color" content="#1a2e1a">
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<!-- jsPDF for the dope card export. Loaded as a classic script; the dope-card
+     module reads window.jspdf at use time. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+<style>
+:root {
+  --forest:#1a3a0e; --deep:#0e2a08; --moss:#5a7a30; --leaf:#7adf7a;
+  --gold:#c8a84b; --amber:#f0c870; --cream:#f2efe9; --stone:#ede9e2;
+  --bark:#3d2b1f; --muted:#a0988a; --red:#c62828; --blue:#1a4aaa;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{background:#080f08;color:rgba(255,255,255,0.85);font-family:'DM Sans',sans-serif;}
+body{max-width:520px;margin:0 auto;padding:0 0 80px;min-height:100vh;}
+
+/* ── Header ─────────────────────────────────────────────────────── */
+.bx-hdr{background:linear-gradient(135deg,#0f1e0a,#0a1506);padding:48px 20px 22px;border-bottom:1px solid rgba(200,168,75,0.15);}
+.bx-hdr-back{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:rgba(200,168,75,0.7);text-decoration:none;margin-bottom:14px;font-weight:600;font-family:'DM Mono',monospace;}
+.bx-hdr h1{font-family:'Playfair Display',serif;font-size:26px;color:white;line-height:1.2;font-weight:700;}
+.bx-hdr .bx-hdr-sub{font-size:12px;color:rgba(200,168,75,0.6);margin-top:4px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;}
+
+/* ── Pre-release banner ─────────────────────────────────────────── */
+#bx-law-banner{display:none;background:rgba(198,40,40,0.10);border-bottom:1px solid rgba(198,40,40,0.25);padding:10px 20px;font-size:11px;color:#ffb0b0;line-height:1.5;}
+#bx-law-banner strong{color:#ff6060;font-weight:700;}
+
+/* ── Profile bar ────────────────────────────────────────────────── */
+#bx-profile-bar{padding:14px 20px 12px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.04);display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;}
+.bx-profile-name{font-family:'Playfair Display',serif;font-size:18px;color:white;font-weight:600;}
+.bx-profile-summary{font-size:11px;color:rgba(255,255,255,0.55);font-family:'DM Mono',monospace;flex-basis:100%;}
+.bx-profile-actions{display:flex;gap:10px;margin-left:auto;}
+.bx-profile-empty{background:rgba(200,168,75,0.12);border:1px solid rgba(200,168,75,0.3);color:var(--gold);padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;}
+.bx-link{background:none;border:none;color:var(--gold);font-size:11px;font-weight:600;cursor:pointer;padding:4px 6px;text-transform:uppercase;letter-spacing:0.5px;font-family:'DM Mono',monospace;}
+.bx-link:hover{color:var(--amber);}
+
+/* ── Range control ──────────────────────────────────────────────── */
+.bx-range{padding:24px 20px 18px;}
+#bx-range-display{text-align:center;font-family:'DM Mono',monospace;color:white;}
+.bx-range-num{font-size:54px;font-weight:500;letter-spacing:-1px;}
+.bx-range-unit{font-size:18px;color:var(--gold);margin-left:4px;}
+#bx-range-slider{width:100%;-webkit-appearance:none;appearance:none;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;outline:none;margin-top:14px;}
+#bx-range-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;background:var(--gold);border-radius:50%;cursor:pointer;border:3px solid #1a2e1a;box-shadow:0 0 0 1px var(--gold);}
+#bx-range-slider::-moz-range-thumb{width:24px;height:24px;background:var(--gold);border-radius:50%;cursor:pointer;border:3px solid #1a2e1a;box-shadow:0 0 0 1px var(--gold);}
+.bx-range-tools{text-align:center;margin-top:10px;}
+
+/* ── Conditions strip ───────────────────────────────────────────── */
+.bx-cond-row{padding:8px 20px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+#bx-conditions-strip{font-size:12px;color:rgba(255,255,255,0.6);font-family:'DM Mono',monospace;flex:1;}
+#bx-conditions-strip strong{color:var(--gold);font-weight:500;}
+#bx-conditions-strip .bx-sep{color:rgba(255,255,255,0.2);margin:0 6px;}
+#bx-conditions-edit{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);padding:6px 12px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;}
+
+/* ── Output card ────────────────────────────────────────────────── */
+#bx-output{padding:0 20px;}
+.bx-output-empty{background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.1);border-radius:14px;padding:32px 16px;text-align:center;color:rgba(255,255,255,0.45);font-size:13px;}
+.bx-output-card{background:linear-gradient(135deg,#1a2e1a,#0e1e0a);border-radius:18px;padding:18px 18px 6px;border:1px solid rgba(200,168,75,0.18);box-shadow:0 4px 20px rgba(0,0,0,0.3);}
+.bx-output-section{padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);}
+.bx-output-section:last-child{border-bottom:none;}
+.bx-output-label{font-size:10px;font-weight:700;color:rgba(200,168,75,0.55);text-transform:uppercase;letter-spacing:1px;font-family:'DM Mono',monospace;margin-bottom:6px;}
+.bx-output-hold,.bx-output-energy,.bx-output-vel{display:flex;align-items:baseline;gap:6px;}
+.bx-output-arrow{font-size:32px;color:var(--gold);font-weight:300;line-height:1;width:24px;display:inline-block;text-align:center;}
+.bx-output-bignum{font-family:'DM Mono',monospace;font-size:36px;font-weight:500;color:white;letter-spacing:-1px;line-height:1;}
+.bx-output-bigunit{font-size:14px;color:rgba(255,255,255,0.45);font-family:'DM Mono',monospace;margin-left:2px;}
+.bx-output-secondary{font-size:11px;color:rgba(255,255,255,0.4);font-family:'DM Mono',monospace;margin-left:auto;}
+.bx-output-sub{font-size:12px;color:rgba(255,255,255,0.55);font-family:'DM Mono',monospace;margin-top:6px;}
+.bx-output-sub .bx-sep{color:rgba(255,255,255,0.2);margin:0 6px;}
+.bx-output-warn{font-size:11px;color:#f0c870;background:rgba(240,200,112,0.08);border:1px solid rgba(240,200,112,0.18);border-radius:6px;padding:5px 10px;margin-top:8px;}
+.bx-output-citation{font-size:10px;color:rgba(255,255,255,0.35);margin-top:6px;font-family:'DM Mono',monospace;}
+.bx-energy-msg{color:rgba(255,255,255,0.55);}
+
+/* Energy classification colours — applied to the section background tint. */
+.bx-energy-green{background:linear-gradient(180deg,rgba(122,223,122,0.06),transparent);border-left:3px solid rgba(122,223,122,0.5);padding-left:12px;border-radius:6px 0 0 6px;}
+.bx-energy-amber{background:linear-gradient(180deg,rgba(240,200,112,0.08),transparent);border-left:3px solid rgba(240,200,112,0.6);padding-left:12px;border-radius:6px 0 0 6px;}
+.bx-energy-red{background:linear-gradient(180deg,rgba(198,40,40,0.10),transparent);border-left:3px solid rgba(198,40,40,0.7);padding-left:12px;border-radius:6px 0 0 6px;}
+.bx-energy-green .bx-energy-msg{color:rgba(122,223,122,0.85);}
+.bx-energy-amber .bx-energy-msg{color:rgba(240,200,112,0.95);}
+.bx-energy-red .bx-energy-msg{color:rgba(255,140,140,0.95);font-weight:600;}
+
+/* ── Drop chart ─────────────────────────────────────────────────── */
+.bx-chart-wrap{padding:18px 20px 0;}
+.bx-chart-label{font-size:10px;font-weight:700;color:rgba(200,168,75,0.55);text-transform:uppercase;letter-spacing:1px;font-family:'DM Mono',monospace;margin-bottom:8px;}
+#bx-drop-chart{width:100%;display:none;background:rgba(255,255,255,0.02);border-radius:10px;border:1px solid rgba(255,255,255,0.04);}
+
+/* ── Bottom controls ────────────────────────────────────────────── */
+.bx-bottom{padding:24px 20px 16px;display:flex;flex-wrap:wrap;gap:10px;}
+.bx-bottom .bx-field{flex:1;min-width:140px;}
+.bx-bottom select{width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:white;padding:10px 12px;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;}
+.bx-bottom label{font-size:10px;font-weight:700;color:rgba(200,168,75,0.55);text-transform:uppercase;letter-spacing:1px;font-family:'DM Mono',monospace;display:block;margin-bottom:6px;}
+
+/* ── Modal ──────────────────────────────────────────────────────── */
+#bx-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:flex-end;padding:0;}
+@media(min-width:600px){#bx-modal{align-items:center;padding:20px;}}
+.bx-modal-card{background:linear-gradient(180deg,#1a2e1a,#0e1e0a);border:1px solid rgba(200,168,75,0.18);border-radius:18px 18px 0 0;width:100%;max-width:520px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;}
+@media(min-width:600px){.bx-modal-card{border-radius:18px;}}
+.bx-modal-title{font-family:'Playfair Display',serif;font-size:20px;color:white;font-weight:600;padding:18px 20px 12px;border-bottom:1px solid rgba(255,255,255,0.05);}
+.bx-modal-body{padding:18px 20px;overflow-y:auto;flex:1;}
+.bx-modal-actions{padding:12px 20px 18px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;}
+
+/* ── Form fields ────────────────────────────────────────────────── */
+.bx-field{margin-bottom:14px;}
+.bx-field label{display:block;font-size:11px;font-weight:600;color:rgba(200,168,75,0.7);text-transform:uppercase;letter-spacing:0.5px;font-family:'DM Mono',monospace;margin-bottom:6px;}
+.bx-field-hint-inline{color:rgba(255,255,255,0.35);text-transform:none;letter-spacing:0;font-weight:400;}
+.bx-field input[type=text],.bx-field input[type=number],.bx-field select{width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);color:white;padding:10px 12px;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;}
+.bx-field-hint{font-size:11px;color:rgba(255,255,255,0.4);margin-top:4px;font-family:'DM Mono',monospace;white-space:pre-line;}
+.bx-field-hint-warn{color:#ff8080 !important;}
+.bx-field-actions{display:flex;align-items:flex-end;}
+.bx-row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+/* Tabs (factory vs manual) */
+.bx-tabs{display:flex;background:rgba(255,255,255,0.04);border-radius:8px;padding:3px;margin-bottom:12px;}
+.bx-tab{flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;border-radius:6px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;}
+.bx-tab.on{background:rgba(200,168,75,0.15);color:var(--gold);}
+
+/* Species chips */
+.bx-species-grid{display:flex;flex-wrap:wrap;gap:6px;}
+.bx-species-chip{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);padding:6px 12px;border-radius:14px;font-size:12px;color:rgba(255,255,255,0.7);cursor:pointer;}
+.bx-species-chip:has(input:checked){background:rgba(200,168,75,0.15);border-color:rgba(200,168,75,0.4);color:var(--gold);}
+.bx-species-chip input{accent-color:var(--gold);}
+
+/* Profile rows in switcher */
+.bx-profile-row{width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:12px 14px;text-align:left;cursor:pointer;color:white;margin-bottom:8px;}
+.bx-profile-row.on{background:rgba(200,168,75,0.10);border-color:rgba(200,168,75,0.3);}
+.bx-profile-row-name{font-family:'Playfair Display',serif;font-size:15px;color:white;font-weight:600;}
+.bx-profile-row-summary{font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;font-family:'DM Mono',monospace;}
+
+/* Buttons */
+.bx-btn{background:var(--moss);border:none;color:white;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.bx-btn:hover{background:#6a8a3a;}
+.bx-btn-secondary{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);}
+.bx-btn-secondary:hover{background:rgba(255,255,255,0.10);}
+.bx-btn-danger{background:rgba(198,40,40,0.15);color:#ff8080;border:1px solid rgba(198,40,40,0.3);margin-right:auto;}
+.bx-btn-danger:hover{background:rgba(198,40,40,0.25);}
+
+/* Toast */
+.bx-toast{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(20,30,15,0.95);color:white;padding:10px 20px;border-radius:24px;font-size:12px;z-index:1500;border:1px solid rgba(200,168,75,0.3);font-family:'DM Mono',monospace;}
+.bx-toast-ok{border-color:rgba(122,223,122,0.5);}
+.bx-toast-warn{border-color:rgba(240,200,112,0.5);color:#f0c870;}
+
+/* ── Export buttons ─────────────────────────────────────────────── */
+.bx-export{padding:18px 20px 4px;text-align:center;}
+.bx-export-label{font-size:11px;color:rgba(255,255,255,0.5);font-family:'DM Mono',monospace;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;}
+.bx-export-buttons{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.bx-export-buttons .bx-btn{flex:1;max-width:180px;}
+
+/* ── Legal compliance ───────────────────────────────────────────── */
+.bx-compliance-section{padding-top:14px !important;}
+.bx-compliance-prerelease{font-size:10px;color:#ffb0b0;background:rgba(198,40,40,0.10);border:1px solid rgba(198,40,40,0.25);border-radius:6px;padding:6px 10px;margin:8px 0 12px;line-height:1.4;}
+.bx-compliance-floor-warn{font-size:11px;color:#ffd0d0;background:rgba(198,40,40,0.20);border:1px solid rgba(198,40,40,0.5);border-radius:8px;padding:10px 12px;margin:8px 0 12px;line-height:1.5;}
+.bx-compliance-floor-warn strong{color:#ff6060;font-weight:700;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;font-size:11px;}
+.bx-compliance-list{display:flex;flex-direction:column;gap:10px;margin-top:8px;}
+.bx-compliance-row{background:rgba(255,255,255,0.03);border-radius:10px;padding:10px 12px;border-left:3px solid rgba(255,255,255,0.1);}
+.bx-compliance-row-pass{border-left-color:rgba(122,223,122,0.5);}
+.bx-compliance-row-fail{border-left-color:rgba(198,40,40,0.7);background:rgba(198,40,40,0.06);}
+.bx-compliance-row-unknown{border-left-color:rgba(240,200,112,0.6);background:rgba(240,200,112,0.04);}
+.bx-compliance-row-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.bx-compliance-species{font-family:'Playfair Display',serif;font-size:14px;color:white;font-weight:600;}
+.bx-compliance-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;}
+.bx-compliance-pass{background:rgba(122,223,122,0.15);color:#7adf7a;border:1px solid rgba(122,223,122,0.3);}
+.bx-compliance-fail{background:rgba(198,40,40,0.15);color:#ff8080;border:1px solid rgba(198,40,40,0.3);}
+.bx-compliance-unknown{background:rgba(240,200,112,0.15);color:#f0c870;border:1px solid rgba(240,200,112,0.3);}
+.bx-compliance-checks{display:flex;flex-direction:column;gap:4px;}
+.bx-compliance-check{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;font-size:11px;font-family:'DM Mono',monospace;color:rgba(255,255,255,0.7);}
+.bx-compliance-icon{font-size:11px;font-weight:700;width:14px;display:inline-block;text-align:center;flex-shrink:0;}
+.bx-compliance-check-pass .bx-compliance-icon{color:#7adf7a;}
+.bx-compliance-check-fail .bx-compliance-icon{color:#ff8080;}
+.bx-compliance-check-unknown .bx-compliance-icon{color:#f0c870;}
+.bx-compliance-check-na .bx-compliance-icon{color:rgba(255,255,255,0.3);}
+.bx-compliance-check-label{color:rgba(255,255,255,0.5);font-weight:500;}
+.bx-compliance-check-value{color:white;font-weight:500;}
+.bx-compliance-check-fail .bx-compliance-check-value{color:#ff8080;}
+.bx-compliance-check-detail{flex-basis:100%;padding-left:20px;font-size:10px;color:rgba(255,255,255,0.45);font-style:italic;}
+.bx-compliance-check-fail .bx-compliance-check-detail{color:#ff8080;}
+
+/* ── Disclaimer block ───────────────────────────────────────────── */
+.bx-disclaimer{padding:20px;color:rgba(255,255,255,0.4);font-size:10px;line-height:1.6;text-align:center;border-top:1px solid rgba(255,255,255,0.04);margin-top:20px;}
+.bx-disclaimer p{margin-bottom:8px;}
+</style>
+</head>
+<body>
+
+<div class="bx-toast" id="bx-toast" role="status" aria-live="polite"></div>
+
+<header class="bx-hdr">
+  <a href="./" class="bx-hdr-back">← First Light</a>
+  <h1>Ballistic Calculator</h1>
+  <div class="bx-hdr-sub">UK Deer Stalking</div>
+</header>
+
+<div id="bx-law-banner">
+  <strong>Pre-release.</strong> Statutory energy thresholds in this calculator have not yet been independently verified
+  against current UK legislation. Use as guidance only; check your equipment against the statutory minimums for your
+  jurisdiction before any shot.
+</div>
+
+<div id="bx-profile-bar"></div>
+
+<section class="bx-range">
+  <div id="bx-range-display"></div>
+  <input type="range" id="bx-range-slider" min="25" max="500" step="5" value="100" aria-label="Target range (metres)">
+  <div class="bx-range-tools">
+    <button id="bx-range-from-reticle" type="button" class="bx-link">Estimate from reticle</button>
+  </div>
+</section>
+
+<div class="bx-cond-row">
+  <div id="bx-conditions-strip"></div>
+  <button id="bx-conditions-edit" type="button">Edit</button>
+</div>
+
+<div id="bx-output"></div>
+
+<div class="bx-chart-wrap">
+  <div class="bx-chart-label">Drop curve · 25–400m</div>
+  <canvas id="bx-drop-chart"></canvas>
+</div>
+
+<section class="bx-bottom">
+  <div class="bx-field">
+    <label for="bx-jurisdiction">Jurisdiction</label>
+    <select id="bx-jurisdiction" aria-label="Jurisdiction for legal energy thresholds"></select>
+  </div>
+</section>
+
+<section class="bx-export">
+  <div class="bx-export-label">Print a dope card for your rifle case</div>
+  <div class="bx-export-buttons">
+    <button class="bx-btn bx-btn-secondary" id="bx-export-a6" type="button">A6 (rifle case)</button>
+    <button class="bx-btn bx-btn-secondary" id="bx-export-a4" type="button">A4 (cabinet)</button>
+  </div>
+</section>
+
+<div class="bx-disclaimer">
+  <p>This calculator uses standard G1/G7 drag models and ICAO atmosphere. Manufacturer ballistic data is from published
+  test-barrel measurements; your rifle may differ. <strong>Chronograph your loads where possible.</strong></p>
+  <p>Calculator output is guidance only. You are responsible for verifying that your equipment, ammunition and shot meet
+  the legal and ethical requirements of the jurisdiction in which you are stalking.</p>
+</div>
+
+<div id="bx-modal"></div>
+
+<script type="module">
+  import { initBallisticsUi } from './modules/ballistics-ui.js';
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initBallisticsUi);
+  } else {
+    initBallisticsUi();
+  }
+</script>
+
+</body>
+</html>
