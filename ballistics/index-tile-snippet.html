@@ -1,0 +1,34 @@
+<!--
+  Ballistic Calculator card — paste into index.html alongside the Deer School
+  card. Same visual treatment, different palette (forest gradient vs Deer
+  School's blue gradient) so the two cards are visually distinct without
+  conflicting. The crosshair / target reticle SVG is single-stroke so it
+  reads cleanly at the card's icon size.
+-->
+<a href="ballistics.html" style="display:block;text-decoration:none;margin:0 0 14px;">
+  <div style="background:linear-gradient(135deg,#1a3a0e,#0e2a08);border-radius:18px;padding:14px 16px;border:1px solid rgba(200,168,75,0.15);box-shadow:0 4px 20px rgba(0,0,0,0.25);display:flex;align-items:center;gap:14px;">
+    <div style="width:44px;height:44px;border-radius:12px;background:rgba(200,168,75,0.12);border:1px solid rgba(200,168,75,0.22);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <!-- Reticle / crosshair: outer circle, four cardinal stadia ticks,
+           central dot. Stroke-only so it reads at small sizes; gold to
+           match the existing First Light icon palette. -->
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="13" cy="13" r="9" stroke="#c8a84b" stroke-width="1.2" fill="none"/>
+        <line x1="13" y1="2" x2="13" y2="6" stroke="#c8a84b" stroke-width="1.4" stroke-linecap="round"/>
+        <line x1="13" y1="20" x2="13" y2="24" stroke="#c8a84b" stroke-width="1.4" stroke-linecap="round"/>
+        <line x1="2" y1="13" x2="6" y2="13" stroke="#c8a84b" stroke-width="1.4" stroke-linecap="round"/>
+        <line x1="20" y1="13" x2="24" y2="13" stroke="#c8a84b" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="13" cy="13" r="1.4" fill="#c8a84b"/>
+        <line x1="13" y1="9.5" x2="13" y2="11.5" stroke="#c8a84b" stroke-width="1" stroke-linecap="round"/>
+        <line x1="13" y1="14.5" x2="13" y2="16.5" stroke="#c8a84b" stroke-width="1" stroke-linecap="round"/>
+        <line x1="9.5" y1="13" x2="11.5" y2="13" stroke="#c8a84b" stroke-width="1" stroke-linecap="round"/>
+        <line x1="14.5" y1="13" x2="16.5" y2="13" stroke="#c8a84b" stroke-width="1" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div style="flex:1;">
+      <div style="font-family:'Playfair Display',serif;font-size:15px;color:white;line-height:1;margin-bottom:3px;">Ballistic Calculator</div>
+      <div style="font-size:10px;color:rgba(200,168,75,0.6);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:5px;">UK Stalking · Beta</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.45);line-height:1.4;">Drops, energy &amp; legal thresholds for your rifle</div>
+    </div>
+    <div style="background:rgba(200,168,75,0.12);border:1px solid rgba(200,168,75,0.2);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;color:#f0c870;flex-shrink:0;">Open ›</div>
+  </div>
+</a>
